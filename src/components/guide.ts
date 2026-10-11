@@ -170,7 +170,7 @@ export function guideStatus(data: Snapshot): StepStatus[] {
   const writeChecks = (who: string, msg: Message | undefined, want: "stopped" | "allowed"): Check[] => {
     if (!msg) return [];
     const rows = writesAfter(who.toLowerCase(), msg);
-    if (!rows.length) return [{ tone: "info", text: `${who}: no memory write was recorded for this message.` }];
+    if (!rows.length) return [{ tone: "warn", text: `${who}: no memory write was recorded for this message.` }];
     return rows.map((w) => {
       const good = want === "stopped" ? w.decision !== "allow" : w.decision === "allow";
       const stale = shipped && w.guardVersion < shipped.version ? ` (checked by older guard v${w.guardVersion})` : ` (guard v${w.guardVersion})`;

@@ -72,8 +72,8 @@ const STEPS: StepCopy[] = [
   {
     title: "Evolve the guardrail",
     todo: "Press Evolve guardrail.",
-    app: "Proposes minimal and strict rule sets from this incident, scores each on a dev split and a held-out split, and ships at most one.",
-    notice: "SHIP / REJECT cards with scores, and a new active version in the Write guardrail panel. These are small smoke sets: they gate what ships, they don’t prove generalization.",
+    app: "Proposes minimal and strict rule sets from this incident, scores each on a dev split and, when available, a held-out split, and ships at most one.",
+    notice: "SHIP / REJECT cards with scores. If a variant ships, the Write guardrail panel shows it as the new active version. These are small smoke sets: they gate what ships, they don’t prove generalization.",
   },
   {
     title: "Mallory re-attacks; Alice updates her own card",
@@ -245,12 +245,17 @@ export function GuidedDemo({ data, pending, step, paused, onStep, onPause, onExi
       onKeyDown={(e) => {
         if (e.key === "Escape") onPause(true);
       }}
-      className="fixed inset-x-0 bottom-0 z-40 flex max-h-[52vh] flex-col rounded-t-2xl border border-accent/30 bg-[#1c0e30]/95 shadow-[0_-18px_60px_-20px_rgb(0_0_0/0.8)] backdrop-blur-xl sm:inset-x-auto sm:bottom-4 sm:left-4 sm:max-h-[min(640px,calc(100vh-32px))] sm:w-[400px] sm:rounded-2xl"
+      className="fixed inset-x-0 bottom-0 z-40 flex max-h-[52vh] flex-col rounded-t-2xl border border-accent/30 bg-[#1c0e30]/95 shadow-[0_-18px_60px_-20px_rgb(0_0_0/0.8)] backdrop-blur-xl sm:inset-x-auto sm:bottom-4 sm:left-4 sm:max-h-[min(560px,calc(100vh-160px))] sm:w-[340px] sm:rounded-2xl"
     >
       <header className="flex items-center gap-2 border-b border-white/10 px-4 py-2.5">
         <Compass className="size-4 shrink-0 text-accent" />
-        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-accent">
-          Guided demo{!finished && <span className="text-faint"> · step {step + 1} of {STEPS.length}</span>}
+        <p className="whitespace-nowrap text-[11px] font-semibold uppercase tracking-[0.16em] text-accent">
+          Guided demo
+          {!finished && (
+            <span className="text-faint">
+              {" "}· <span className="sr-only">step </span>{step + 1}<span aria-hidden> / </span><span className="sr-only"> of </span>{STEPS.length}
+            </span>
+          )}
         </p>
         <div className="ml-auto flex items-center gap-0.5">
           <IconButton label="Restart guide from step 1" onClick={() => go(0)}>

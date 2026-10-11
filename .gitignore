@@ -16,6 +16,7 @@
 # next.js
 /.next/
 /out/
+HACKATHON_READINESS_REPORT.md
 
 # production
 /build

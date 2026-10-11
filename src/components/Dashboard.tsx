@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
 import { Activity, AlertTriangle, ArrowDown, ArrowUpRight, Compass, Database, Loader2, Network, RotateCcw, ShieldCheck, Sparkles, Undo2 } from "lucide-react";
@@ -40,6 +40,13 @@ export function Dashboard() {
   const [tab, setTab] = useState<(typeof TABS)[number]>("Ledger");
   const [confirmReset, setConfirmReset] = useState(false);
   const [guide, setGuideState] = useState<GuideState>(() => (typeof window === "undefined" ? { mode: "off", step: 0 } : loadGuide()));
+  // After Exit unmounts the guide, hand keyboard focus back to its entry point (in an effect, so it runs after the commit).
+  const refocusStart = useRef(false);
+  useEffect(() => {
+    if (guide.mode !== "off" || !refocusStart.current) return;
+    refocusStart.current = false;
+    document.getElementById("guide-start")?.focus();
+  }, [guide.mode]);
   const setGuide = (g: Partial<GuideState>) =>
     setGuideState((cur) => {
       const next = { ...cur, ...g };
@@ -107,7 +114,8 @@ export function Dashboard() {
           <a className="transition-colors hover:text-fg" href="#mission-console">Incident response</a>
           <a className="transition-colors hover:text-fg" href="#mission-console">Guardrails</a>
         </nav>
-        <div className="flex flex-wrap items-center gap-1.5">
+        {/* Status pills get their own full-width row, so the title and actions stay on one line at laptop widths. */}
+        <div className="order-last flex basis-full flex-wrap items-center gap-1.5">
           <Pill tone="ok">
             <Database className="size-3" /> {data.config.atlas}
           </Pill>
@@ -306,9 +314,8 @@ export function Dashboard() {
             onStep={(step) => setGuide({ step })}
             onPause={(p) => setGuide({ mode: p ? "paused" : "open" })}
             onExit={() => {
+              refocusStart.current = true;
               setGuide({ mode: "off" });
-              // The guide unmounts; hand keyboard focus back to its entry point.
-              requestAnimationFrame(() => document.getElementById("guide-start")?.focus());
             }}
             onRun={(s) => void send(s.agentId, s.speaker, s.text, `script:${s.id}`)}
             onReset={resetWorld}

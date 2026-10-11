@@ -1,9 +1,29 @@
-# ctrlz — Hackathon Submission
+# ctrlz — MongoDB SF Tech Week Hackathon Submission
 
 **Live demo:** https://ctrlz-mu.vercel.app · **Console:** https://ctrlz-mu.vercel.app/console
 
+**Event:** [The Harness Engineering & Model Wrangling #SFTechWeek Hackathon](https://cerebralvalley.ai/e/mongodb-sftw-hackathon) · San Francisco · October 11, 2026.
 
-**One-line pitch:** Ctrl+Z for AI-agent memory: causally traces tainted agent memories in MongoDB Atlas, atomizes quarantine, compensates damage newest-first, replays clean state with idempotency preservation, and evolves write guardrails against future poisoning.
+**One-line pitch:** Ctrl+Z for agents that remember: ctrlz traces which actions trusted a poisoned memory, reverses only the damage, keeps valid work, and strengthens the memory write guardrail.
+
+## Why this fits this hackathon
+
+The event asks for agent harnesses that can adapt, remember, and operate reliably in production, with MongoDB Atlas as a core component. ctrlz focuses on the failure path persistent memory creates: when a bad memory has already caused downstream actions, how can an operator recover safely and stop the same write from landing again? Atlas holds the memory, provenance graph, action ledger, search indexes, and guardrail evaluation state. Its graph traversal, vector and full-text search, transactions, and unique indexes are part of the recovery mechanism, not a decorative integration.
+
+The project’s strongest proof is one live incident: Mallory poisons Alice’s travel memory; the concierge acts on it; ctrlz traces the causal chain, quarantines tainted state, compensates the flight, keeps the unaffected hotel booking during clean replay, then evolves and gates a guardrail that holds Mallory’s paraphrase while allowing Alice’s own update.
+
+The event page lists $18,000 across the finalist teams and names MongoDB, Raindrop, AWS, and Modelence judges. It does not publish weighted judging criteria, so this submission makes no claims about score percentages.
+
+## What could cost us with judges
+
+- **Atlas must be visibly real in the judged run.** The app defaults to Atlas Local and supports an offline heuristic mode. The recovery claims that depend on Atlas Search, transactions, and isolated evaluation are strongest only when the console is actually connected to an Atlas deployment and the indexes are queryable. Show the runtime config and Atlas operation feed before making those claims.
+- **Atlas Agent Engine is not integrated.** The event highlights it, but ctrlz currently provides its own harness and recovery layer. Don’t imply Agent Engine integration; explain that ctrlz addresses governance and recovery around persistent agent memory.
+- **Some effects are simulated.** Stripe is test mode only; hotel, invoice, and email effects are labeled simulations or compensation intents. Make the ledger labels visible and frame the demo as proving safe orchestration and recovery, not production integrations for every provider.
+- **Identity is a trusted demo persona.** The console lets the operator select Alice, Bob, or Mallory. This proves provenance-aware guardrails only when the identity label is trustworthy; it does not stop a caller from impersonating Alice.
+- **The evidence needs one consistent number.** This submission says 171 unit tests, while the landing page says 153. Reconcile both against a fresh test run before presenting either count. The held-out gate is also a small smoke set (5 attacks and 6 benign examples per split), not evidence of broad real-world generalization.
+- **The live deployment was not independently confirmed during this review.** Verify the judge URL, Atlas connection, queryable indexes, auth, disabled reset, and a seeded backup before presenting. The public page is a shared mutable world; don’t use it as the judge instance without those controls.
+
+**Pitch priority:** spend the first minute showing the failure and the selective undo. Use the Atlas ops feed and ledger as evidence while the incident runs; explain the small eval set and trusted-identity limit plainly in Q&A. Avoid spending the short pitch enumerating integrations or architectural internals before judges have seen the hotel stay preserved while the poisoned flight is compensated.
 
 ---
 
