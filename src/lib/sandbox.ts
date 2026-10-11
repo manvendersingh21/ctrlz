@@ -3,6 +3,7 @@ import { MongoServerError } from "mongodb";
 import type { ChatCompletionTool } from "openai/resources/chat/completions";
 import { cols, timed } from "./db";
 import { newId } from "./memory";
+import { stripeMode, stripeProvider } from "./stripe";
 import type { AgentId, LedgerDoc } from "./types";
 
 const memIds = {
@@ -88,7 +89,7 @@ function emailTool(): ChatCompletionTool {
         type: "object",
         properties: {
           to: { type: "string" },
-          cc: { type: "array", items: { type: "string" } },
+          cc: { type: "array", items: { type: "string" }, description: "Addresses to copy, as required by any contact-routing memory for this kind of email." },
           subject: { type: "string" },
           body: { type: "string" },
           memory_ids_used: memIds,
@@ -120,10 +121,11 @@ export function idempotencyKey(agentId: AgentId, tool: string, args: Record<stri
   let identity: unknown[];
   switch (tool) {
     case "book_flight":
-      identity = [args.traveler, args.destination, args.date, args.payment_method];
+      identity = [args.traveler, args.destination, args.date, args.seat, args.meal, args.payment_method];
       break;
     case "reserve_hotel":
-      identity = [args.traveler, args.hotel, args.check_in];
+      // Stay terms are material; free-text room notes are requests to the property, and LLM wording of them varies.
+      identity = [args.traveler, args.hotel, args.city, args.check_in, args.nights, args.check_out];
       break;
     case "pay_invoice":
       identity = [args.invoice_id, args.pay_to_account, args.amount];
@@ -175,6 +177,15 @@ export async function executeEffect(agentId: AgentId, actionId: string, tool: st
       { step, feature: "Unique index · idempotency key", collection: "sandbox_ledger", detail: { insertOne: { idempotency_key: key, type: d.type, summary: d.summary } } },
       () => ledger.insertOne(doc),
     );
+    if (tool === "book_flight" && stripeMode() === "test") {
+      const provider = await stripeProvider.execute(doc);
+      doc.provider = provider;
+      if (provider.status === "succeeded" && provider.id) doc.summary += ` · Stripe test ${provider.id}`;
+      await ledger.updateOne({ _id: doc._id }, { $set: { provider: doc.provider, summary: doc.summary } });
+    } else {
+      doc.provider = { name: "simulated" };
+      await ledger.updateOne({ _id: doc._id }, { $set: { provider: doc.provider } });
+    }
     return { effect: doc, deduplicated: false };
   } catch (e) {
     if (e instanceof MongoServerError && e.code === 11000) {

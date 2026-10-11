@@ -32,6 +32,15 @@ export function Ledger({ data }: { data: Snapshot }) {
                   <div className={cn(l.status === "reversed" && "line-through opacity-60")}>
                     {l.summary}
                     {l.compensates && <span className="ml-1 text-[10px] text-muted">↶ {l.compensates}</span>}
+                    <div className="mt-0.5">
+                      {l.provider?.name === "stripe" ? (
+                        l.provider.dashboardUrl ? (
+                          <a href={l.provider.dashboardUrl} target="_blank" rel="noopener" className={cn("rounded-full border px-1.5 py-px text-[10px]", l.provider.status === "failed" ? "border-danger/30 bg-danger/10 text-danger" : "border-info/30 bg-info/10 text-info")}>
+                            Stripe test{l.provider.status === "failed" ? " · failed" : ""}
+                          </a>
+                        ) : <span className="rounded-full border border-danger/30 bg-danger/10 px-1.5 py-px text-[10px] text-danger">Stripe test · {l.provider.status}</span>
+                      ) : l.provider?.name === "simulated" ? <span className="text-[10px] text-muted">simulated</span> : null}
+                    </div>
                   </div>
                 </div>
               </td>

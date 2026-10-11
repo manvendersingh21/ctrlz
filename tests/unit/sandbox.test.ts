@@ -41,8 +41,9 @@ describe("idempotencyKey", () => {
   describe("book_flight", () => {
     const base = key("book_flight", flight);
 
-    it("ignores non-identity args (seat, meal, extra fields)", () => {
-      expect(key("book_flight", { ...flight, seat: "window", meal: "standard" })).toBe(base);
+    it("changes when seat or meal changes, but ignores extra fields", () => {
+      expect(key("book_flight", { ...flight, seat: "window" })).not.toBe(base);
+      expect(key("book_flight", { ...flight, meal: "standard" })).not.toBe(base);
       expect(key("book_flight", { ...flight, note: "anything" })).toBe(base);
     });
 
@@ -64,8 +65,12 @@ describe("idempotencyKey", () => {
   describe("reserve_hotel", () => {
     const base = key("reserve_hotel", hotel);
 
-    it("ignores the guarantee card, nights and notes — the replay can keep the reservation", () => {
-      expect(key("reserve_hotel", { ...hotel, guarantee: "Visa ending 4417", nights: 4, room_notes: "", city: "tokyo " })).toBe(base);
+    it("includes city and nights, but ignores the guarantee card and free-text room notes", () => {
+      expect(key("reserve_hotel", { ...hotel, guarantee: "Visa ending 4417", city: "tokyo " })).toBe(base);
+      expect(key("reserve_hotel", { ...hotel, nights: 4 })).not.toBe(base);
+      expect(key("reserve_hotel", { ...hotel, nights: "3" })).toBe(base);
+      expect(key("reserve_hotel", { ...hotel, room_notes: "Has gym" })).toBe(base);
+      expect(key("reserve_hotel", { ...hotel, city: "London" })).not.toBe(base);
     });
 
     it("changes when hotel, traveler or check-in change", () => {

@@ -1,3 +1,5 @@
+import type { ProviderResult } from "./stripe";
+
 export type AgentId = "concierge" | "finance";
 export type UserId = "alice" | "bob" | "mallory";
 export type NodeKind = "message" | "memory" | "action";
@@ -110,6 +112,7 @@ export interface LedgerDoc {
   amount?: number;
   compensates?: string;
   status: "live" | "reversed";
+  provider?: ProviderResult | { name: "simulated" };
   createdAt: Date;
 }
 
@@ -123,7 +126,7 @@ export interface CompensationDoc {
   txn_id: string;
   order: number;
   status: "pending" | "done";
-  outcome?: "executed" | "deduplicated";
+  outcome?: "executed" | "deduplicated" | "failed";
   createdAt: Date;
   doneAt?: Date;
 }

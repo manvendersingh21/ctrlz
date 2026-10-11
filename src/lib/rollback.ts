@@ -4,6 +4,7 @@ import { executePlan, planTask, type PlannedCall } from "./agent";
 import { client, cols, timed } from "./db";
 import { newId } from "./memory";
 import { beginTurn, signal } from "./raindrop";
+import { stripeProvider } from "./stripe";
 import { compensationFor } from "./sandbox";
 import type { AgentId, CompensationDoc, LedgerDoc } from "./types";
 
@@ -28,17 +29,60 @@ export interface IncidentDoc {
   _id: string;
   rootId: string;
   reason: string;
-  status: "quarantined" | "compensating" | "replaying" | "resolved";
+  status: "opening" | "quarantined" | "compensating" | "replaying" | "resolved";
   txnId: string;
   taint: TaintNode[];
   replayPlans: ReplayPlan[];
-  kept: { effectId: string; actionId: string; summary: string; why: string }[];
+  kept: { effectId: string; actionId: string; summary: string; why: string; before: Record<string, unknown>; replay: Record<string, unknown> }[];
   toCompensate: string[];
   compensations: { effectId: string; summary: string; outcome: "executed" | "deduplicated" }[];
   replayed: { actionId: string; tool: string; summary: string; deduplicated: boolean }[];
   timeline: { stage: string; at: Date; ms: number; note: string }[];
   createdAt: Date;
   resolvedAt?: Date;
+  /** Set when permission_epoch was bumped for this incident (idempotent quarantine resume). */
+  epochInc?: boolean;
+}
+
+export type IncidentCheckpointStage = "quarantine" | "planning" | "compensating" | "resolved";
+
+/** Which pipeline stage runIncident should execute next (pure; safe to unit-test). */
+export function incidentResumeStage(
+  checkpoint: { stage?: string } | null | undefined,
+  inc: Pick<IncidentDoc, "replayPlans" | "toCompensate" | "kept" | "status">,
+): IncidentCheckpointStage {
+  const stage = checkpoint?.stage;
+  if (stage === "resolved") return "resolved";
+  if (stage === "compensating") return "compensating";
+  if (stage === "planning") return "planning";
+  if (stage === "quarantine") return "quarantine";
+  if ((inc.replayPlans?.length ?? 0) > 0 || (inc.toCompensate?.length ?? 0) > 0 || (inc.kept?.length ?? 0) > 0) return "compensating";
+  if (inc.status === "quarantined") return "planning";
+  return "compensating";
+}
+
+type EffectSlice = { _id: string; actionId: string; summary: string; idempotency_key: string; details: Record<string, unknown> };
+
+/** Split live effects into kept (replay reproduces key) vs compensate; attach before/replay args for the UI. */
+export function planKeepCompensate(effects: EffectSlice[], replayPlans: ReplayPlan[]) {
+  const replayByKey = new Map<string, Record<string, unknown>>();
+  for (const p of replayPlans) for (const c of p.calls) replayByKey.set(c.key, c.args);
+  const kept: IncidentDoc["kept"] = [];
+  const toCompensate: string[] = [];
+  for (const e of effects) {
+    const replay = replayByKey.get(e.idempotency_key);
+    if (replay) {
+      kept.push({
+        effectId: e._id,
+        actionId: e.actionId,
+        summary: e.summary,
+        why: "clean replay reproduces the identical effect",
+        before: e.details,
+        replay,
+      });
+    } else toCompensate.push(e._id);
+  }
+  return { kept, toCompensate };
 }
 
 const now = () => performance.now();
@@ -74,38 +118,38 @@ export async function blastRadius(rootId: string, incidentId?: string): Promise<
   return nodes;
 }
 
-async function withTxn<T>(fn: (session?: ClientSession) => Promise<T>): Promise<T> {
+async function withTxn<T>(fn: (session?: ClientSession) => Promise<T>): Promise<{ value: T; transactional: boolean }> {
   const session = (await client()).startSession();
   try {
     let out!: T;
     await session.withTransaction(async () => {
       out = await fn(session);
     });
-    return out;
+    return { value: out, transactional: true };
   } catch (e) {
     // Standalone servers can't run transactions; every step below is idempotent, so degrade to sequential writes.
-    if (e instanceof MongoServerError && (e.code === 20 || /Transaction numbers/i.test(e.message))) return fn(undefined);
+    if (e instanceof MongoServerError && (e.code === 20 || /Transaction numbers/i.test(e.message))) {
+      return { value: await fn(undefined), transactional: false };
+    }
     throw e;
   } finally {
     await session.endSession();
   }
 }
 
-/** Phase 1 (atomic): trace, quarantine, revoke, bump the permission epoch, and plan the clean replay. */
-export async function openIncident(rootId: string, reason: string) {
+function signatureId(incidentId: string, memoryId: string) {
+  return `sig:${incidentId}:${memoryId}`;
+}
+
+async function quarantineIncident(inc: IncidentDoc): Promise<IncidentDoc> {
   const c = await cols();
-  const incidentId = newId("inc");
-  const txnId = newId("txn");
-  const t0 = now();
-  const taint = await blastRadius(rootId, incidentId);
+  const { incidentId, txnId, taint, rootId } = { incidentId: inc._id, txnId: inc.txnId, taint: inc.taint, rootId: inc.rootId };
   const memIds = taint.filter((n) => n.kind === "memory").map((n) => n._id);
   const actIds = taint.filter((n) => n.kind === "action").map((n) => n._id);
-  const timeline: IncidentDoc["timeline"] = [{ stage: "trace", at: new Date(), ms: Math.round(now() - t0), note: `${taint.length} nodes · ${memIds.length} memories · ${actIds.length} actions` }];
-
   const t1 = now();
   // Revoke the root memory, or — when rolling back a whole source message — every memory written from it.
   const revoked = await c.memories.find({ _id: { $in: memIds }, $or: [{ _id: rootId }, { "provenance.messageId": rootId }] }).toArray();
-  await withTxn(async (session) => {
+  const { transactional } = await withTxn(async (session) => {
     const q = { incidentId, at: new Date() };
     for (const n of taint) {
       const set = { quarantine: { ...q, depth: n.depth } };
@@ -114,18 +158,49 @@ export async function openIncident(rootId: string, reason: string) {
       if (n.kind !== "message" || n._id === rootId) await c.lineage.updateOne({ _id: n._id }, { $set: { status: "quarantined" } }, { session });
     }
     for (const m of revoked) {
-      await c.signatures.insertOne({ _id: newId("sig") as never, memoryId: m._id, text: m.text, embedding: m.embedding, incidentId, at: new Date() }, { session });
+      const _id = signatureId(incidentId, m._id);
+      await c.signatures.updateOne(
+        { _id: _id as never },
+        { $setOnInsert: { memoryId: m._id, text: m.text, embedding: m.embedding, incidentId, at: new Date() } },
+        { upsert: true, session },
+      );
     }
-    await c.system.updateOne({ _id: "permission_epoch" as never }, { $inc: { value: 1 } }, { session, upsert: true });
+    if (!inc.epochInc) {
+      await c.system.updateOne({ _id: "permission_epoch" as never }, { $inc: { value: 1 } }, { session, upsert: true });
+    }
+    await c.incidents.updateOne(
+      { _id: incidentId as never },
+      { $set: { status: "quarantined", epochInc: true } },
+      { session },
+    );
   });
+  const quarantineNote = transactional
+    ? `txn ${txnId}: quarantined ${memIds.length + actIds.length} records, revoked ${revoked.length} signature(s), epoch+1`
+    : `sequential fallback — standalone, not atomic · ${txnId}: quarantined ${memIds.length + actIds.length} records, revoked ${revoked.length} signature(s), epoch+1`;
+  const timeline = [
+    ...inc.timeline.filter((t) => t.stage !== "quarantine"),
+    { stage: "quarantine", at: new Date(), ms: Math.round(now() - t1), note: quarantineNote },
+  ];
+  await c.incidents.updateOne({ _id: incidentId as never }, { $set: { timeline } });
+  await c.checkpoints.updateOne({ _id: incidentId as never }, { $set: { stage: "planning", updatedAt: new Date() } }, { upsert: true });
   await timed(
-    { step: "incident:quarantine", feature: "Multi-document transaction", collection: "memories, actions, lineage, revoked_signatures", detail: { txnId, memories: memIds, actions: actIds }, incidentId },
+    {
+      step: "incident:quarantine",
+      feature: transactional ? "Multi-document transaction" : "Sequential writes (standalone · not ACID)",
+      collection: "memories, actions, lineage, revoked_signatures",
+      detail: { txnId, transactional, memories: memIds, actions: actIds },
+      incidentId,
+    },
     async () => null,
   );
-  timeline.push({ stage: "quarantine", at: new Date(), ms: Math.round(now() - t1), note: `txn ${txnId}: quarantined ${memIds.length + actIds.length} records, revoked ${revoked.length} signature(s), epoch+1` });
+  return (await c.incidents.findOne({ _id: incidentId as never })) as unknown as IncidentDoc;
+}
 
-  // Plan the clean replay BEFORE compensating, so effects the replay would reproduce are kept, not churned.
+async function planIncidentReplay(inc: IncidentDoc): Promise<IncidentDoc> {
+  const c = await cols();
+  const actIds = inc.taint.filter((n) => n.kind === "action").map((n) => n._id);
   const t2 = now();
+  // Plan the clean replay BEFORE compensating, so effects the replay would reproduce are kept, not churned.
   const tainted = await c.actions.find({ _id: { $in: actIds } }).sort({ createdAt: 1 }).toArray();
   const byRequest = new Map<string, string[]>();
   for (const a of tainted) byRequest.set(a.requestMessageId, [...(byRequest.get(a.requestMessageId) ?? []), a._id]);
@@ -136,45 +211,81 @@ export async function openIncident(rootId: string, reason: string) {
     const plan = await planTask(msg.agentId, msg.speaker, msg.text, requestMessageId, "incident:replay-plan");
     replayPlans.push({ requestMessageId, agentId: msg.agentId, speaker: msg.speaker, text: msg.text, calls: plan.calls, retrieved: plan.retrieved.map((r) => r._id), taintedActions });
   }
-  const replayKeys = new Set(replayPlans.flatMap((p) => p.calls.map((k) => k.key)));
   const effects = await c.ledger.find({ actionId: { $in: actIds }, status: "live" }).toArray();
-  const kept: IncidentDoc["kept"] = [];
-  const toCompensate: string[] = [];
-  for (const e of effects) {
-    if (replayKeys.has(e.idempotency_key)) kept.push({ effectId: e._id, actionId: e.actionId, summary: e.summary, why: "clean replay reproduces the identical effect" });
-    else toCompensate.push(e._id);
-  }
-  timeline.push({ stage: "plan", at: new Date(), ms: Math.round(now() - t2), note: `${replayPlans.length} request(s) to replay · ${toCompensate.length} to compensate · ${kept.length} kept` });
+  const { kept, toCompensate } = planKeepCompensate(
+    effects.map((e) => ({ _id: e._id, actionId: e.actionId, summary: e.summary, idempotency_key: e.idempotency_key, details: e.details as Record<string, unknown> })),
+    replayPlans,
+  );
+  const timeline = [
+    ...inc.timeline.filter((t) => t.stage !== "plan"),
+    { stage: "plan", at: new Date(), ms: Math.round(now() - t2), note: `${replayPlans.length} request(s) to replay · ${toCompensate.length} to compensate · ${kept.length} kept` },
+  ];
+  await c.incidents.updateOne({ _id: inc._id as never }, { $set: { replayPlans, kept, toCompensate, timeline } });
+  await c.checkpoints.updateOne(
+    { _id: inc._id as never },
+    { $set: { stage: "compensating", done: [], replayed: [], updatedAt: new Date() } },
+    { upsert: true },
+  );
+  return (await c.incidents.findOne({ _id: inc._id as never })) as unknown as IncidentDoc;
+}
 
+/** Opens an incident: durable intent first, then runIncident advances quarantine → plan → compensate (resumable). */
+export async function openIncident(rootId: string, reason: string) {
+  const c = await cols();
+  const incidentId = newId("inc");
+  const txnId = newId("txn");
+  const t0 = now();
+  const taint = await blastRadius(rootId, incidentId);
+  const memIds = taint.filter((n) => n.kind === "memory").map((n) => n._id);
+  const actIds = taint.filter((n) => n.kind === "action").map((n) => n._id);
+  const timeline: IncidentDoc["timeline"] = [
+    { stage: "trace", at: new Date(), ms: Math.round(now() - t0), note: `${taint.length} nodes · ${memIds.length} memories · ${actIds.length} actions` },
+  ];
   const doc: IncidentDoc = {
     _id: incidentId,
     rootId,
     reason,
-    status: "quarantined",
+    status: "opening",
     txnId,
     taint,
-    replayPlans,
-    kept,
-    toCompensate,
+    replayPlans: [],
+    kept: [],
+    toCompensate: [],
     compensations: [],
     replayed: [],
     timeline,
     createdAt: new Date(),
   };
   await c.incidents.insertOne(doc as unknown as Document);
-  await c.checkpoints.insertOne({ _id: incidentId as never, stage: "compensating", done: [], replayed: [], updatedAt: new Date() });
+  await c.checkpoints.insertOne({ _id: incidentId as never, stage: "quarantine", done: [], replayed: [], updatedAt: new Date() });
   return runIncident(incidentId);
 }
 
-/** Phase 2 (resumable): compensate in reverse order, then replay. Safe to call again after a crash. */
+/** Resumable incident pipeline: quarantine → plan → compensate → replay. Safe to call again after a crash. */
 export async function runIncident(incidentId: string) {
   const c = await cols();
-  const inc = (await c.incidents.findOne({ _id: incidentId as never })) as unknown as IncidentDoc | null;
+  let inc = (await c.incidents.findOne({ _id: incidentId as never })) as unknown as IncidentDoc | null;
   if (!inc) throw new Error(`unknown incident ${incidentId}`);
-  const cp = (await c.checkpoints.findOne({ _id: incidentId as never })) ?? { done: [], replayed: [] };
+  type Checkpoint = { stage?: string; done?: string[]; replayed?: string[] };
+  const loadCp = async () => ((await c.checkpoints.findOne({ _id: incidentId as never })) as Checkpoint | null) ?? { done: [], replayed: [] };
+  let cp = await loadCp();
+  let stage = incidentResumeStage(cp, inc);
   // A resolved incident is a no-op on resume — and must not re-report to Raindrop.
-  if ((cp as { stage?: string }).stage === "resolved") return inc;
-  const done = new Set<string>(cp.done as string[]);
+  if (stage === "resolved") return inc;
+
+  if (stage === "quarantine") {
+    inc = await quarantineIncident(inc);
+    cp = await loadCp();
+    stage = incidentResumeStage(cp, inc);
+  }
+  if (stage === "planning") {
+    inc = await planIncidentReplay(inc);
+    cp = await loadCp();
+    stage = incidentResumeStage(cp, inc);
+  }
+  if (stage === "resolved") return inc;
+
+  const done = new Set<string>(cp.done ?? []);
 
   // The incident is its own Raindrop interaction; every stage and compensation is a tool span on it.
   const turn = await beginTurn({
@@ -186,12 +297,12 @@ export async function runIncident(incidentId: string) {
     properties: { root: inc.rootId, txn: inc.txnId, tainted_nodes: inc.taint.length, to_compensate: inc.toCompensate.length, kept: inc.kept.length },
   });
   for (const t of inc.timeline) await turn.tool(`incident.${t.stage}`, { incidentId }, { note: t.note }, { durationMs: t.ms });
-  for (const k of inc.kept) await turn.tool("incident.keep", { effectId: k.effectId }, { summary: k.summary, why: k.why });
+  for (const k of inc.kept) await turn.tool("incident.keep", { effectId: k.effectId }, { summary: k.summary, why: k.why, before: k.before, replay: k.replay });
 
   const t0 = now();
   await c.incidents.updateOne({ _id: incidentId as never }, { $set: { status: "compensating" } });
   const effects = await c.ledger.find({ _id: { $in: inc.toCompensate } }).sort({ createdAt: -1 }).toArray();
-  const comps: IncidentDoc["compensations"] = [...inc.compensations];
+  const comps: (Omit<IncidentDoc["compensations"][number], "outcome"> & { outcome: "executed" | "deduplicated" | "failed" })[] = [...inc.compensations];
   for (const [order, effect] of effects.entries()) {
     if (done.has(effect._id)) continue;
     const comp = compensationFor(effect);
@@ -209,7 +320,7 @@ export async function runIncident(incidentId: string) {
       createdAt: new Date(),
     };
     await c.compensations.updateOne({ idempotency_key: key }, { $setOnInsert: compDoc }, { upsert: true });
-    let outcome: "executed" | "deduplicated" = "executed";
+    let outcome: "executed" | "deduplicated" | "failed" = "executed";
     const ledgerDoc: LedgerDoc = {
       _id: newId("fx"),
       idempotency_key: key,
@@ -232,20 +343,36 @@ export async function runIncident(incidentId: string) {
       if (!(e instanceof MongoServerError && e.code === 11000)) throw e;
       outcome = "deduplicated";
     }
-    await c.ledger.updateOne({ _id: effect._id }, { $set: { status: "reversed" } });
-    await c.actions.updateOne({ _id: effect.actionId }, { $set: { status: "compensated" } });
-    await c.lineage.updateOne({ _id: effect.actionId }, { $set: { status: "compensated" } });
-    await c.compensations.updateOne({ idempotency_key: key }, { $set: { status: "done", outcome, doneAt: new Date() } });
-    await c.checkpoints.updateOne({ _id: incidentId as never }, { $addToSet: { done: effect._id }, $set: { updatedAt: new Date() } });
-    comps.push({ effectId: effect._id, summary: comp.summary, outcome });
-    await turn.tool(`compensate.${comp.kind}`, { effectId: effect._id, original: effect.summary }, { summary: comp.summary, outcome }, { properties: { actionId: effect.actionId, order } });
+    let summary = comp.summary;
+    let provider: LedgerDoc["provider"] = { name: "simulated" };
+    if (effect.provider?.name === "stripe" && effect.provider.id) {
+      provider = await stripeProvider.compensate(effect);
+      if (provider.status === "succeeded") summary = `Refunded via Stripe test ${provider.id ?? ""}`.trim();
+      else {
+        outcome = "failed";
+        summary = `Stripe refund FAILED: ${provider.error ?? provider.status}`;
+      }
+    }
+    await c.ledger.updateOne({ idempotency_key: key }, { $set: { provider, summary } });
+    if (outcome !== "failed") {
+      await c.ledger.updateOne({ _id: effect._id }, { $set: { status: "reversed" } });
+      await c.actions.updateOne({ _id: effect.actionId }, { $set: { status: "compensated" } });
+      await c.lineage.updateOne({ _id: effect.actionId }, { $set: { status: "compensated" } });
+      await c.compensations.updateOne({ idempotency_key: key }, { $set: { status: "done", outcome, doneAt: new Date() } });
+      await c.checkpoints.updateOne({ _id: incidentId as never }, { $addToSet: { done: effect._id }, $set: { updatedAt: new Date() } });
+    } else {
+      // Left pending and out of the checkpoint, so resuming the incident retries it (Stripe's idempotency key makes that safe).
+      await c.compensations.updateOne({ idempotency_key: key }, { $set: { outcome } });
+    }
+    comps.push({ effectId: effect._id, summary, outcome });
+    await turn.tool(`compensate.${comp.kind}`, { effectId: effect._id, original: effect.summary }, { summary, outcome }, { properties: { actionId: effect.actionId, order } });
   }
   for (const k of inc.kept) await c.lineage.updateOne({ _id: k.actionId }, { $set: { status: "kept" } });
   const tCompensate = Math.round(now() - t0);
 
   const t1 = now();
   await c.incidents.updateOne({ _id: incidentId as never }, { $set: { status: "replaying", compensations: comps } });
-  const replayedReqs = new Set<string>(cp.replayed as string[]);
+  const replayedReqs = new Set<string>(cp.replayed ?? []);
   const replayed: IncidentDoc["replayed"] = [...inc.replayed];
   for (const p of inc.replayPlans) {
     if (replayedReqs.has(p.requestMessageId)) continue;

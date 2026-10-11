@@ -1,3 +1,5 @@
+import { stripeMode } from "./stripe";
+
 export type EmbedProvider = "voyage" | "nvidia" | "hash";
 
 function embedProvider(): EmbedProvider {
@@ -59,5 +61,6 @@ export function publicConfig() {
     raindrop: process.env.RAINDROP_WRITE_KEY ? "cloud" : process.env.RAINDROP_WORKSHOP ? "workshop" : "mirror-only",
     agentEngine: Boolean(config.agentEngine.apiKey && config.agentEngine.projectId),
     graderRole: Boolean(config.graderUri),
+    stripe: stripeMode(),
   };
 }

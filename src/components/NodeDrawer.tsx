@@ -88,6 +88,12 @@ export function NodeDrawer({ data, id, onClose, onRollback, busy }: { data: Snap
                   {effect && (
                     <Row k="Effect">
                       <span className={effect.status === "reversed" ? "line-through opacity-70" : ""}>{effect.summary}</span> {money(effect.amount)}
+                      {effect.provider?.name === "stripe" ? (
+                        <div className={effect.provider.status === "failed" ? "text-danger" : "text-muted"}>
+                          {effect.provider.dashboardUrl ? <a href={effect.provider.dashboardUrl} target="_blank" rel="noopener" className="underline">Stripe test · {effect.provider.status}</a> : `Stripe test · ${effect.provider.status}`}
+                          {effect.provider.error && <div>{effect.provider.error}</div>}
+                        </div>
+                      ) : effect.provider?.name === "simulated" ? <div className="text-muted">simulated</div> : null}
                     </Row>
                   )}
                 </>
