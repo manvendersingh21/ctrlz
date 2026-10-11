@@ -1,0 +1,36 @@
+# dependencies & build output (installed/built inside the image)
+node_modules
+.next
+out
+dist
+
+# vcs / ci / agent tooling
+.git
+.gitignore
+.github
+.agents
+.agent
+.claude
+.opencode
+graphify-out
+
+# secrets — never bake into an image
+.env
+.env.*
+!.env.example
+
+# local state
+tsconfig.tsbuildinfo
+*.log
+npm-debug.log*
+pnpm-debug.log*
+.DS_Store
+coverage
+
+# files not needed at runtime
+Dockerfile
+.dockerignore
+docker-compose.yml
+README.md
+docs
+tests
