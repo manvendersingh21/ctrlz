@@ -47,6 +47,15 @@ export default function Landing() {
   return <main className={`${styles.page} ${instrumentSerif.variable}`}>
     <div className={styles.ambient} aria-hidden="true" />
     <header className={styles.nav}><Link href="/" className={styles.brand}><span className={styles.brandMark} aria-hidden="true">↶</span>ctrlz<span className={styles.brandKey} aria-hidden="true">⌘Z</span></Link><nav aria-label="Main navigation"><a href="#how">How it works</a><a href="#features">Features</a><a href="#demo">Demo</a><a href="/benchmark">Benchmark</a><a href="#faq">FAQ</a></nav><Link className={styles.navCta} href="/console">Open console <ArrowUpRight size={15}/></Link></header>
+    <section className={`${styles.benchmarkFeature} ${styles.wrap}`} aria-labelledby="benchmark-feature-title">
+      <div className={styles.benchmarkCopy}>
+        <p className={styles.eyebrow}>CHECKED-IN GUARDRAIL SMOKE EVALUATION</p>
+        <h2 id="benchmark-feature-title">A tighter rule blocks the attacks <em>without blocking benign writes.</em></h2>
+        <p>On fixed fixtures (5 attacks + 6 benign writes per split), the evolved minimal rules block 5/5 attacks and keep 6/6 benign writes. Baseline v1 blocks 0/5; strict rules keep only 3/6 benign writes.</p>
+        <Link href="/benchmark">See results and methodology <ArrowRight size={15}/></Link>
+      </div>
+      <p className={styles.benchmarkLimit}>Small smoke set; not a broad generalization claim or comparison with other applications.</p>
+    </section>
     <section className={`${styles.hero} ${styles.wrap}`}>
       <HeroFx />
       <div className={styles.heroCopy}><p className={styles.eyebrow}><span className={styles.pulse}/> AI AGENT MEMORY SECURITY</p><h1>Your agent remembered a lie. <em>Undo it.</em></h1><p className={styles.lede}>When poisoned memory turns into real-world actions, trace what it touched, reverse the damage, and replay the request cleanly.</p><div className={styles.actions}><Link className={styles.buttonLight} href="/console">Launch the live demo <ArrowUpRight size={16}/></Link><a className={styles.buttonQuiet} href="#how">See how it works <ArrowDown size={15}/></a></div><div className={styles.heroNote}><ShieldCheck size={15}/> Built for the moment an agent gets it wrong.</div></div>

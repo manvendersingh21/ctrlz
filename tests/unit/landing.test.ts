@@ -13,6 +13,14 @@ describe("landing evidence claims", () => {
     expect(landing).toContain("Use an atomic database transaction where supported");
   });
 
+  it("shows the fixture-backed benchmark summary and its comparison limits on the front page", () => {
+    expect(landing).toContain("CHECKED-IN GUARDRAIL SMOKE EVALUATION");
+    expect(landing).toContain("the evolved minimal rules block 5/5 attacks and keep 6/6 benign writes");
+    expect(landing).toContain("Baseline v1 blocks 0/5; strict rules keep only 3/6 benign writes");
+    expect(landing).toContain("not a broad generalization claim or comparison with other applications");
+    expect(landing).toContain('href="/benchmark"');
+  });
+
   it("labels simulated effects and the conditional Stripe test mode", () => {
     expect(landing).toContain("With a Stripe test key, flight charges and refunds create test objects; no real money moves.");
     expect(landing).toContain("Correction-email intent recorded; no email sent");
