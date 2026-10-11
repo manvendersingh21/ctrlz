@@ -12,6 +12,12 @@ export interface StepStatus {
   checks: Check[];
 }
 
+/** The guide's finale is successful only when the evidence steps passed and a variant actually shipped. */
+export function guideSucceeded(status: StepStatus[]): boolean {
+  return status.length === 7 && status.every((step) => step.done) &&
+    status[5].checks.some((check) => check.tone === "ok" && /shipped \(active\)/.test(check.text));
+}
+
 type Ledger = Snapshot["ledger"][number];
 type Message = Snapshot["messages"][number];
 
@@ -71,7 +77,7 @@ export function guideStatus(data: Snapshot): StepStatus[] {
 
   // 2 · Card 01: what the guardrail actually did with Mallory's message.
   const card01: StepStatus = {
-    done: !!msg01,
+    done: !!msg01 && poisoned.some((m) => m.status === "active" || m.status === "quarantined"),
     checks: !msg01
       ? []
       : poisoned.length
@@ -79,7 +85,7 @@ export function guideStatus(data: Snapshot): StepStatus[] {
             tone: m.status === "active" ? "warn" : "info",
             text: `Memory ${m.status}: “${m.text}” — spoken by ${m.provenance.speaker} (${m.provenance.speakerRole}), trust tier ${m.provenance.trust_tier}.`,
           }))
-        : [{ tone: "info", text: "No memory was stored from Mallory’s message. Check the Write log for the guardrail’s decision." }],
+        : [{ tone: "warn", text: "No memory was stored from Mallory’s message. Check the Write log for the guardrail’s decision." }],
   };
 
   // 3 · Card 02: the concierge's real side effects for Alice's request (the planner may differ from the script).
@@ -87,7 +93,7 @@ export function guideStatus(data: Snapshot): StepStatus[] {
   const poisonIds = new Set(poisoned.map((m) => m._id));
   const usedPoison = acts02.filter((a) => a.justified_by.some((j) => poisonIds.has(j)));
   const card02: StepStatus = {
-    done: !!msg02 && acts02.length > 0,
+    done: !!msg02 && acts02.length > 0 && usedPoison.length > 0,
     checks: !msg02
       ? []
       : acts02.length === 0
@@ -104,13 +110,19 @@ export function guideStatus(data: Snapshot): StepStatus[] {
   };
 
   // 4 · Rollback of Mallory's source.
+  const rollbackFailures = inc?.compensations.filter((c) => {
+    const comp = data.ledger.find((l) => l.compensates === c.effectId);
+    return (c.outcome as string) === "failed" || !comp || comp.summary.includes("FAILED");
+  }) ?? [];
   const rollback: StepStatus = {
-    done: inc?.status === "resolved",
+    done: inc?.status === "resolved" && rollbackFailures.length === 0,
     checks: !inc
       ? []
       : [
-          inc.status === "resolved"
+          inc.status === "resolved" && rollbackFailures.length === 0
             ? { tone: "ok", text: `Incident ${inc._id} resolved: ${inc.taint.length} nodes quarantined · ${inc.compensations.length} compensated · ${inc.kept.length} kept · ${inc.replayed.length} replayed.` }
+            : inc.status === "resolved"
+              ? { tone: "warn", text: `Incident ${inc._id} is marked resolved, but ${rollbackFailures.length} compensation(s) failed or lack ledger evidence.` }
             : { tone: "info", text: `Incident ${inc._id} is ${inc.status}…` },
           ...(inc.rootId !== msg01?._id && poisoned.length > 1
             ? [{ tone: "warn" as const, text: "Only one of Mallory’s memories was rolled back; the other from the same message is still active." }]
@@ -121,15 +133,24 @@ export function guideStatus(data: Snapshot): StepStatus[] {
   // 5 · Compensation and kept hotel: observational, always needs a manual continue.
   const isHotel = (id: string) => ledgerById.get(id)?.type === "hotel_reservation";
   const hotelKept = !!inc && (inc.kept.some((k) => isHotel(k.effectId)) || inc.replayed.some((r) => r.deduplicated && r.tool === "reserve_hotel"));
+  const failedCompensations = inc?.compensations.filter((c) => {
+    const comp = data.ledger.find((l) => l.compensates === c.effectId);
+    return (c.outcome as string) === "failed" || !comp || comp.summary.includes("FAILED");
+  }) ?? [];
+  const expectedReplays = inc?.replayPlans ?? [];
+  const replayEvidence = !!expectedReplays.length && expectedReplays.every((p) =>
+    data.raindrop.some((e) => e.kind === "signal" && e.name === "clean_replay" && e.sentiment === "POSITIVE" &&
+      e.properties?.incident === inc?._id && e.properties?.replay_of === p.requestMessageId),
+  );
   const evidence: StepStatus = {
-    done: inc?.status === "resolved",
+    done: inc?.status === "resolved" && failedCompensations.length === 0 && hotelKept && replayEvidence,
     checks: !inc || inc.status !== "resolved"
       ? []
       : [
           ...inc.compensations.map((c): Check => {
             const orig = ledgerById.get(c.effectId);
             const comp = data.ledger.find((l) => l.compensates === c.effectId);
-            const failed = comp?.summary.includes("FAILED") ?? false;
+            const failed = failedCompensations.some((x) => x.effectId === c.effectId) || !comp || comp.summary.includes("FAILED");
             return {
               tone: failed ? "warn" : "ok",
               text: `Compensated: ${orig?.summary ?? c.summary} → ${comp?.summary ?? c.outcome} (${providerLabel(comp)})`,
@@ -137,6 +158,8 @@ export function guideStatus(data: Snapshot): StepStatus[] {
           }),
           ...inc.kept.map((k): Check => ({ tone: "ok", text: `Kept: ${k.summary} (${providerLabel(ledgerById.get(k.effectId))}) — ${k.why}` })),
           ...inc.replayed.map((r): Check => ({ tone: "info", text: `Replayed: ${r.summary}${r.deduplicated ? " — deduplicated onto the kept booking" : " — re-executed"}` })),
+          ...(failedCompensations.length ? [{ tone: "warn" as const, text: "At least one compensation failed; the recovery is incomplete." }] : []),
+          ...(!replayEvidence ? [{ tone: "warn" as const, text: "A clean_replay verification signal is missing for at least one affected request." }] : []),
           ...(hotelKept ? [] : [{ tone: "warn" as const, text: "No hotel booking was kept in this run." }]),
         ],
   };
@@ -144,10 +167,13 @@ export function guideStatus(data: Snapshot): StepStatus[] {
   // 6 · Guardrail evolution from this incident.
   const variants = inc ? data.guardrails.filter((g) => g.incidentId === inc._id) : [];
   // Several variants can pass the gate; only the best-scoring one ships (the rest stay "candidate").
-  const shipped = variants.find((g) => g.gate?.decision === "ship" && g.status !== "candidate");
+  const shipped = variants.find((g) => g.gate?.decision === "ship" && g.status === "active");
+  const passed = variants.filter((g) => g.gate?.decision === "ship");
   const evolve: StepStatus = {
     done: variants.length > 0,
-    checks: variants.map((g): Check => {
+    checks: [
+      ...(variants.length ? [{ tone: "info" as const, text: `${variants.length} variant${variants.length === 1 ? "" : "s"} generated.` }] : []),
+      ...variants.map((g): Check => {
       const name = g.rationale.match(/^\[([\w-]+)\]/)?.[1] ?? `v${g.version}`;
       const dev = g.gate?.dev.candidate;
       const held = g.gate?.heldout?.candidate;
@@ -157,19 +183,34 @@ export function guideStatus(data: Snapshot): StepStatus[] {
       ]
         .filter(Boolean)
         .join(" · ");
-      const verdict = g === shipped ? `shipped (${g.status})` : g.gate?.decision === "ship" ? "passed the gate, not shipped" : "rejected by the gate";
-      return { tone: g === shipped ? "ok" : "info", text: `${name} v${g.version} (proposed by ${g.proposedBy}): ${verdict} — ${scores}` };
-    }),
+      const verdict = !g.gate
+        ? "gate result unavailable"
+        : g === shipped
+          ? `shipped (${g.status})`
+          : g.gate.decision === "ship"
+            ? "passed the gate, not shipped"
+            : "rejected by the gate";
+      return { tone: g === shipped ? "ok" : !g.gate || g.gate.decision === "reject" ? "warn" : "info", text: `${name} v${g.version} (proposed by ${g.proposedBy}): ${verdict} — ${scores}` };
+      }),
+    ],
   };
-  if (variants.length && !shipped) evolve.checks.push({ tone: "warn", text: "No variant passed the gate, so the active guardrail is unchanged." });
+  if (variants.length && !passed.length) evolve.checks.push({ tone: "warn", text: variants.some((g) => !g.gate)
+    ? "Variants were generated, but no variant is recorded as passing and at least one gate result is unavailable."
+    : "Variants were generated, but none passed the gate; the active guardrail is unchanged." });
+  else if (passed.length && !shipped) evolve.checks.push({ tone: "warn", text: `${passed.length} variant${passed.length === 1 ? "" : "s"} passed, but none is recorded as shipped.` });
 
   // 7 · Re-attack and legitimate update: the write log's real decisions after each card.
   const active = data.guardrails.find((g) => g.status === "active");
-  const writesAfter = (speaker: string, msg: Message | undefined) =>
-    msg ? data.writes.filter((w) => w.candidate.speaker === speaker && ms(w.ts) >= ms(msg.createdAt)) : [];
-  const writeChecks = (who: string, msg: Message | undefined, want: "stopped" | "allowed"): Check[] => {
+  const writesFor = (speaker: string, msg: Message | undefined, nextMsg: Message | undefined) =>
+    msg
+      ? data.writes.filter((w) =>
+          w.candidate.speaker === speaker &&
+          (w.messageId ? w.messageId === msg._id : ms(w.ts) >= ms(msg.createdAt) && (!nextMsg || ms(w.ts) < ms(nextMsg.createdAt))),
+        )
+      : [];
+  const writeChecks = (who: string, msg: Message | undefined, nextMsg: Message | undefined, want: "stopped" | "allowed"): Check[] => {
     if (!msg) return [];
-    const rows = writesAfter(who.toLowerCase(), msg);
+    const rows = writesFor(who.toLowerCase(), msg, nextMsg);
     if (!rows.length) return [{ tone: "warn", text: `${who}: no memory write was recorded for this message.` }];
     return rows.map((w) => {
       const good = want === "stopped" ? w.decision !== "allow" : w.decision === "allow";
@@ -177,9 +218,13 @@ export function guideStatus(data: Snapshot): StepStatus[] {
       return { tone: good ? "ok" : "warn", text: `${who}’s write ${decisionWord(w.decision)}${stale}: “${w.candidate.text}”` };
     });
   };
+  const nextAfter06 = msg06 ? data.messages.find((m) => m.role === "user" && ms(m.createdAt) > ms(msg06.createdAt)) : undefined;
   const outcomes: StepStatus = {
-    done: !!msg05 && !!msg06,
-    checks: [...writeChecks("Mallory", msg05, "stopped"), ...writeChecks("Alice", msg06, "allowed")],
+    done: !!msg05 && !!msg06 &&
+      writesFor("mallory", msg05, msg06).length > 0 && writesFor("mallory", msg05, msg06).every((w) => w.decision === "hold" || w.decision === "block") &&
+      writesFor("alice", msg06, nextAfter06).length > 0 &&
+      writesFor("alice", msg06, nextAfter06).every((w) => w.decision === "allow"),
+    checks: [...writeChecks("Mallory", msg05, msg06, "stopped"), ...writeChecks("Alice", msg06, nextAfter06, "allowed")],
   };
   if (msg05 && active && !shipped) outcomes.checks.push({ tone: "warn", text: `The active guardrail is still v${active.version}; no evolved rule shipped in this run.` });
 

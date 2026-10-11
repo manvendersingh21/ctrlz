@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Circle, Compass, Info, Pause, Play, RotateCcw, X } from "lucide-react";
 import type { Snapshot } from "@/lib/state";
 import { cn } from "./cn";
-import { guideStatus, sentCard, storyIncident, type Check } from "./guide";
+import { guideStatus, guideSucceeded, sentCard, storyIncident, type Check } from "./guide";
 import { Button } from "./ui";
 
 type ScriptStep = Snapshot["script"][number];
@@ -59,13 +59,13 @@ const STEPS: StepCopy[] = [
   {
     title: "Roll back Mallory’s source",
     todo: "Select Mallory’s message in the lineage graph (or use the button below), then press the roll back button in the drawer that opens.",
-    app: "Traces everything downstream of that message, quarantines it in one transaction, plans a clean replay, compensates bad side effects newest-first, then replays Alice’s request without the poison.",
+    app: "Traces everything downstream, quarantines it in a database transaction when supported (otherwise an explicitly non-atomic sequential fallback), plans a clean replay, compensates bad effects newest-first, then replays Alice’s request without the poison.",
     notice: "Incident panel: the five stages tick off. Lineage colors: magenta quarantined, peach compensated, green kept.",
   },
   {
     title: "Check the compensation and the kept hotel",
     todo: "Read the incident’s Compensated, Kept and Replayed columns, and the Ledger tab.",
-    app: "The flight charged to the wrong card is compensated and rebooked on the correct one. The hotel replay matched the original booking’s key, so it was kept instead of booked twice.",
+    app: "The wrong-card flight charge is compensated and the clean replay runs. Refunds use Stripe test mode only when configured; hotel, invoice, and email effects are sandbox simulations. The hotel is kept only when the incident evidence confirms a matching booking.",
     notice: "The live evidence below comes straight from this incident. Continue when you’ve shown it.",
     manual: true,
   },
@@ -79,7 +79,7 @@ const STEPS: StepCopy[] = [
     title: "Mallory re-attacks; Alice updates her own card",
     todo: "Run card 05 (Mallory paraphrases the attack), then card 06 (Alice changes her own card).",
     app: "Same kind of memory write, different speaker. The guardrail judges each write by who said it and what it touches.",
-    notice: "Write log: the guardrail’s decision for each write. The goal is Mallory held or blocked and Alice allowed. Note: the console picks the speaker and the API trusts it; production would take it from an authenticated session.",
+    notice: "Simulation only: this console lets you choose Alice or Mallory; the API trusts that demo choice. It is not authenticated identity. Production must bind speaker identity to a verified session or trusted platform event before evaluating guardrails.",
   },
 ];
 
@@ -98,6 +98,7 @@ function spotlight(id: string, focus = false) {
 
 export function GuidedDemo({ data, pending, step, paused, onStep, onPause, onExit, onRun, onReset, onEvolve, onSelect, onShowTab }: Props) {
   const status = useMemo(() => guideStatus(data), [data]);
+  const succeeded = guideSucceeded(status);
   const [confirmReset, setConfirmReset] = useState(false);
   const [resetFailed, setResetFailed] = useState(false);
   const heading = useRef<HTMLHeadingElement>(null);
@@ -287,11 +288,11 @@ export function GuidedDemo({ data, pending, step, paused, onStep, onPause, onExi
         {finished ? (
           <>
             <h2 id="guide-heading" ref={heading} tabIndex={-1} className="font-serif text-xl leading-tight text-cream outline-none">
-              {status.every((x) => x.done) ? "That’s the whole story" : "End of the guide"}
+              {succeeded ? "That’s the whole story" : "End of the guide"}
             </h2>
             <p className="text-xs leading-5 text-muted">
-              {status.every((x) => x.done)
-                ? "Poisoned memory traced to its source, rolled back with compensation, cleanly replayed, and the guardrail evolved."
+              {succeeded
+                ? "Poisoned memory traced to its source, recovery evidence verified, and the expected writes passed the guardrail."
                 : `${status.filter((x) => x.done).length} of ${STEPS.length} steps were detected in live state. Go back to any step marked as waiting to finish it.`}
             </p>
           </>

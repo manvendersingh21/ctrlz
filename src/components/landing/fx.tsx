@@ -62,7 +62,7 @@ const signals = [
 const STEP_MS = 1100;
 const HOLD_STEPS = 3;
 
-/** Decorative loop of the Raindrop signals one incident emits, lit one by one. */
+/** Decorative example sequence; it is not connected to a live Raindrop event. */
 export function SignalStrip() {
   const ref = useRef<HTMLDivElement>(null);
   const [step, setStep] = useState<number>(signals.length);
@@ -90,7 +90,7 @@ export function SignalStrip() {
   return (
     <div ref={ref} className={styles.signalStrip} aria-hidden="true">
       <div className={styles.signalHead}>
-        <span className={styles.liveDot} /> LIVE SIGNAL <span>Raindrop · evt msg_7f3a</span>
+        <span className={styles.liveDot} /> EXAMPLE SIGNAL FLOW <span>Raindrop · illustrative animation</span>
       </div>
       <ol className={styles.signalRow}>
         {signals.map((signal, index) => (

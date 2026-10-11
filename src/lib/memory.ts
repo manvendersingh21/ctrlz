@@ -87,6 +87,7 @@ export async function writeMemory(c: WriteCandidate, ctx: WriteContext) {
   await writeLog.insertOne({
     _id: writeId as never,
     ts: new Date(),
+    messageId: ctx.messageId ?? null,
     candidate: c,
     embedding,
     decision: d.decision,
