@@ -13,7 +13,7 @@ long-term memory in MongoDB Atlas. When a poisoned memory gets in and causes sid
 3. **Plans a clean replay** of every affected request *before* compensating, so effects the replay would
    reproduce identically (same semantic idempotency key — covering material fields: nights and city for
    hotels, seat and meal for flights) are **kept**, not cancelled and redone. Kept entries carry the
-   original and replayed arguments for the UI.
+   original and replayed arguments (stored on the incident; not yet rendered in the console).
 4. **Compensates** the rest newest-first (refund / payment recall / correction email — **compensation
    intents**), exactly once via unique indexes, with checkpoints in `worker_checkpoints` so `runIncident`
    can resume after a crash. With `STRIPE_SECRET_KEY` set, flight charges/refunds run as real Stripe
@@ -95,8 +95,8 @@ One primary storyline (card numbers = script rail). Header **Reset world** → c
 Alice's card** (Amex "frozen", travel redirected to Visa •4417, receipts cc'd to travel-desk@ma11ory.io)
 → card **02 · Alice books Tokyo** (flight on Mallory's Visa — real Stripe test PaymentIntent when
 configured; hotel simulated) → click Mallory's `msg_…` node in the lineage graph → **Roll back source
-message** (flight refunded via real Stripe test Refund and rebooked on Amex •1001; hotel **kept**, shown
-with before/replay values; correction-email intent) → Incident panel **Evolve guardrail** (minimal ships,
+message** (flight refunded via real Stripe test Refund and rebooked on Amex •1001; hotel untouched — replay
+deduplicated onto it; correction-email intent) → Incident panel **Evolve guardrail** (minimal ships,
 strict rejected) → card **05 · Mallory re-attacks (paraphrase)** (held) → card **06 · Alice updates her
 own card** (allowed). Full talk track: `docs/DEMO_SCRIPT.md`.
 

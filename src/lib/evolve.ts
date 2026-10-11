@@ -91,9 +91,7 @@ export async function evolveGuardrail(incidentId: string) {
 
   // Tournament: the LLM's proposals compete with the deterministic ones on the same held-out gate.
   const heur = proposal.proposedBy === "heuristic" ? null : heuristicProposal(root);
-  const minimalRules = proposal.proposedBy === "heuristic"
-    ? proposal.minimal.filter((rule) => rule.id !== "similar-to-revoked")
-    : proposal.minimal;
+  const minimalRules = proposal.minimal;
   type Variant = { name: string; rules: GuardRule[]; proposedBy: GuardrailDoc["proposedBy"]; rationale: string };
   const variants: Variant[] = [
     { name: "minimal", rules: [...current.rules, ...minimalRules], proposedBy: proposal.proposedBy, rationale: proposal.rationale },
@@ -101,7 +99,7 @@ export async function evolveGuardrail(incidentId: string) {
     ...(heur
       ? [
           // Provenance rules catch the seeded attacks; similarity alone can cost a benign example under the zero-miss gate.
-          { name: "heuristic-minimal", rules: [...current.rules, ...heur.minimal.filter((rule) => rule.id !== "similar-to-revoked")], proposedBy: "heuristic" as const, rationale: heur.rationale },
+          { name: "heuristic-minimal", rules: [...current.rules, ...heur.minimal], proposedBy: "heuristic" as const, rationale: heur.rationale },
           { name: "heuristic-strict", rules: [...current.rules, ...heur.strict], proposedBy: "heuristic" as const, rationale: heur.rationale },
         ]
       : []),

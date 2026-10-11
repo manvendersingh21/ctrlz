@@ -16,7 +16,7 @@ Incident panel's **Evolve guardrail**. Nothing else.
 |---|---|---|---|
 | **0:00 – 0:25** | Baseline & the poison | Header → **Reset world** → **Confirm**; then script card **01 · Mallory poisons Alice's card** | Persistent agent memory + an unverified write lands with Mallory's provenance. |
 | **0:25 – 1:00** | The damage | Script card **02 · Alice books Tokyo**; point at **Ledger** tab + **Causal lineage** | Downstream agent acts on poisoned memory; blast radius grows. |
-| **1:00 – 1:45** | Causal rollback & clean replay | Click Mallory's `msg_…` node in **Causal lineage** → **Roll back source message** | `$graphLookup` blast radius, atomic quarantine, real Stripe test refund + rebook, hotel **kept** (before/replay values shown). |
+| **1:00 – 1:45** | Causal rollback & clean replay | Click Mallory's `msg_…` node in **Causal lineage** → **Roll back source message** | `$graphLookup` blast radius, atomic quarantine, real Stripe test refund + rebook, hotel untouched (**Replayed → deduplicated**, no second booking). |
 | **1:45 – 2:20** | Evolve the guardrail | Incident panel → **Evolve guardrail** | Candidate rule gating on dev + held-out smoke splits; strict rejected. |
 | **2:20 – 3:00** | Re-attack & the legitimate update | Script card **05 · Mallory re-attacks (paraphrase)**, then **06 · Alice updates her own card** | Re-attack **held**; Alice's self-update **allowed**. |
 
@@ -57,14 +57,14 @@ Incident panel's **Evolve guardrail**. Nothing else.
 **UI Actions:**
 1. Click Mallory's root message node (`msg_…`) in **Causal lineage**.
 2. In the drawer, click **Roll back source message**.
-3. Watch the Incident panel (timeline, Compensated / Kept / Replayed) and the **Atlas ops** feed. The **Kept** entry shows the original vs. replayed booking arguments side by side.
+3. Watch the Incident panel (timeline, Compensated / Kept / Replayed) and the **Atlas ops** feed. The hotel appears under **Replayed** with a **deduplicated** badge.
 
 **Spoken Script:**
 > *"We don't restore a snapshot — that would wipe unrelated work. I click Mallory's source message and roll it back.*
 >
 > *In Atlas: `$graphLookup` traces the full causal blast radius, then one multi-document transaction quarantines the tainted memories and actions and revokes the poisoned embedding. The incident intent was persisted first and every stage is checkpointed, so a crash mid-run resumes instead of stranding quarantined data.*
 >
-> *Now look at the decision: the flight is refunded — a real Stripe test refund, real `re_` id — and rebooked on Alice's Amex, and a correction-email intent is recorded. But the Park Hyatt is **kept**: the incident shows the original and replayed arguments next to each other — same traveler, hotel, city, check-in and nights — so cancelling and rebooking would only churn. The keep/compensate call is made on material fields, not vibes."*
+> *Now look at the decision: the flight is refunded — a real Stripe test refund, real `re_` id — and rebooked on Alice's Amex, and a correction-email intent is recorded. But the Park Hyatt is untouched: the clean replay plans the same stay — same traveler, hotel, city, check-in and nights — so its idempotency key matches and the replay **deduplicates** onto the existing reservation instead of booking a second one. Change the nights and it would not match. The call is made on material fields, not vibes."*
 
 ---
 
