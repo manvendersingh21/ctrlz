@@ -192,8 +192,8 @@ describe("heuristicProposal", () => {
   ])("strict blocks all poison but loses benign cases in %s", (_name, split) => {
     const s = scoreSplit(split, STRICT, []);
     expect(s.attacksBlocked).toBe(s.attacks);
-    expect(s.benignKept).toBeLessThan(s.benign);
-    expect(s.falsePositives.length).toBeGreaterThan(0);
+    expect(s).toMatchObject({ attacks: 5, attacksBlocked: 5, benign: 6, benignKept: 3 });
+    expect(s.falsePositives).toHaveLength(3);
   });
 
   it("strict drops Alice's own card update on the dev split", () => {

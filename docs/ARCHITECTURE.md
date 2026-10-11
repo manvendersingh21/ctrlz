@@ -1,33 +1,36 @@
 # ctrlz — architecture & contracts
 
-ctrlz is a **Ctrl+Z for AI-agent memory**. Two agents (a travel *concierge* and a *finance* agent) share a
-long-term memory in MongoDB Atlas. When a poisoned memory gets in and causes side effects (real Stripe
-**test-mode** charges when a key is set, simulated ledger effects otherwise), ctrlz:
+ctrlz is a **recovery console for AI-agent memory**. A travel *concierge* and a
+*finance* agent use persistent memory stored in MongoDB. The travel flow can
+call Stripe **test mode** for flight effects when configured; hotel, invoice,
+and email effects are simulated. When a poisoned memory influences later work,
+ctrlz:
 
 1. **Traces** the causal blast radius with `$graphLookup` over the `lineage` collection
    (message → memory → action → derived memory).
 2. **Quarantines** every tainted record in one multi-document transaction (Atlas / replica sets; standalone
    dev MongoDB falls back to sequential writes, flagged non-atomic in the ops feed), revokes the poisoned
    memory's embedding (`revoked_signatures`), and bumps the permission epoch. The incident intent is
-   persisted *before* quarantine; every stage is checkpointed and resumable.
+   persisted before quarantine; stages have checkpoints for resumption.
 3. **Plans a clean replay** of every affected request *before* compensating, so effects the replay would
-   reproduce identically (same semantic idempotency key — covering material fields: nights and city for
-   hotels, seat and meal for flights) are **kept**, not cancelled and redone. Kept entries carry the
-   original and replayed arguments (stored on the incident; not yet rendered in the console).
+   reproduce identically (same semantic idempotency key covering material fields such as nights and city
+   for hotels, seat and meal for flights) are **kept**, not cancelled and redone. Kept entries record
+   original and replay arguments for inspection.
 4. **Compensates** the rest newest-first (refund / payment recall / correction email — **compensation
-   intents**), exactly once via unique indexes, with checkpoints in `worker_checkpoints` so `runIncident`
-   can resume after a crash. With `STRIPE_SECRET_KEY` set, flight charges/refunds run as real Stripe
-   **test-mode** PaymentIntents/Refunds via the `EffectProvider` adapter (`stripe.ts`); hotels, invoices
-   and emails are simulated and labeled so in the ledger. Provider failures surface as outcome `failed`
-   and stay pending for retry on resume.
+   intents**), with unique idempotency keys and checkpoints in `worker_checkpoints`. With
+   `STRIPE_SECRET_KEY` set to a test key, flight charges/refunds call Stripe **test mode** via the
+   adapter (`stripe.ts`); hotels, invoices and emails are simulated and labeled in the ledger. Provider
+   failures surface as outcome `failed`. A resolved incident is a no-op on resume, so a failed refund
+   requires operator follow-up and is not automatically retried.
 5. **Replays** the requests without the revoked memory; duplicates dedupe on `sandbox_ledger.idempotency_key`.
 6. **Evolves the write guardrail**: an LLM (or heuristic fallback) proposes `minimal` and `strict` rule sets;
    both are scored on a dev split and a held-out split (separate DB, separate principal on Atlas). A
    variant ships only if it blocks more attacks **and** keeps every benign write on both splits — small
    smoke sets (5 attacks / 6 benign per split) that gate shipping, not a generalization claim. Revertible.
 
-Everything runs without API keys: embeddings fall back to a hashing embedder, the LLM to deterministic
-heuristics. Keys upgrade quality (Voyage embeddings + rerank, any OpenAI-compatible LLM).
+With MongoDB configured, the demo runs without external AI keys: embeddings fall back to a hashing
+embedder and the LLM to deterministic heuristics. Optional keys enable Voyage embeddings/reranking and
+an OpenAI-compatible LLM.
 
 ## Layout
 
@@ -53,8 +56,8 @@ All responses are JSON with `Cache-Control: no-store` and an `x-request-id` head
 400 malformed JSON / validation (`issues` included), 403 reset disabled (`CTRLZ_ALLOW_RESET=0`), 404 unknown node or incident,
 409 state conflict (no active guardrail, nothing to revert), 413 body over 64 KB, 429 rate limited (`Retry-After`), 500 otherwise (no stack).
 With `CTRLZ_BASIC_AUTH` set, every route except `/api/health` requires HTTP Basic auth.
-`speaker` in `POST /api/chat` is caller-supplied and trusted — the demo persona chosen by the console
-operator, not an authenticated identity; production should derive it from an IdP session server-side.
+`speaker` in `POST /api/chat` is caller-supplied and restricted to the demo labels Alice, Bob, or Mallory.
+It is not authenticated identity; production must derive it from a verified session or trusted event.
 
 | Method & path | Body | Returns |
 | --- | --- | --- |
@@ -83,7 +86,7 @@ operator, not an authenticated identity; production should derive it from an IdP
   incidents: IncidentDoc[];    // newest first: status opening|quarantined|compensating|replaying|resolved; taint[{_id,kind,depth,label}], kept[{…, before, replay}], compensations[{…, outcome: executed|deduplicated|failed}], replayed[], timeline[{stage,ms,note}]
   guardrails: GuardrailDoc[];  // ascending version; status active|retired|candidate|rejected|reverted; gate.{dev,heldout,decision,reasons}
   ops: AtlasOp[];              // newest first: { ts, step, feature, collection, detail, ms, n } — "what ran in Atlas"
-  writes: { candidate, decision: "allow"|"hold"|"block", hits: string[], similarity, guardVersion, ts }[];  // write log, newest first
+  writes: { messageId?, candidate, decision: "allow"|"hold"|"block", hits: string[], similarity, guardVersion, ts }[];  // newest first; new entries link to their request message
 }
 ```
 
@@ -91,17 +94,15 @@ Lineage `status` values: `seed`, `ok`, `active`, `held`, `executed`, `deduped`, 
 
 ## Demo script
 
-One primary storyline (card numbers = script rail). Header **Reset world** → card **01 · Mallory poisons
-Alice's card** (Amex "frozen", travel redirected to Visa •4417, receipts cc'd to travel-desk@ma11ory.io)
-→ card **02 · Alice books Tokyo** (flight on Mallory's Visa — real Stripe test PaymentIntent when
-configured; hotel simulated) → click Mallory's `msg_…` node in the lineage graph → **Roll back source
-message** (flight refunded via real Stripe test Refund and rebooked on Amex •1001; hotel untouched — replay
-deduplicated onto it; correction-email intent) → Incident panel **Evolve guardrail** (minimal ships,
-strict rejected) → card **05 · Mallory re-attacks (paraphrase)** (held) → card **06 · Alice updates her
-own card** (allowed). Full talk track: `docs/DEMO_SCRIPT.md`.
+One primary storyline (card numbers = script rail). Header **Reset world** → cards **01** and **02** →
+select Mallory's source in the lineage graph and roll it back → inspect compensation, keep, and replay
+evidence → evolve the guardrail → cards **05** and **06**. Report only the transaction mode and provider
+outcomes shown by this run. Full talk track: `docs/DEMO_SCRIPT.md`.
 
 Finance backup (only if asked): card **03 · Mallory reroutes vendor bank** → card **04 · Bob pays Acme
-invoice** → roll back → recall + replay to ACME-001.
+invoice** → roll back. Payment and recall effects are simulated ledger entries.
+
+Guardrail fixture scores and their limits: [docs/BENCHMARK.md](BENCHMARK.md).
 
 ## Local dev
 
