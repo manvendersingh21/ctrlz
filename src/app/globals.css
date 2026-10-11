@@ -145,3 +145,28 @@ body::before {
   scrollbar-width: thin;
   scrollbar-color: rgb(255 255 255 / 14%) transparent;
 }
+
+/* Guided demo: visible keyboard focus and a brief outline on the element a step points at. */
+.guide-focus:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.guide-spotlight {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+  scroll-margin-top: 16px;
+  animation: guide-pulse 1.2s ease-in-out 2;
+}
+
+@keyframes guide-pulse {
+  50% {
+    outline-color: transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .guide-spotlight {
+    animation: none;
+  }
+}

@@ -5,9 +5,9 @@ import { Loader2 } from "lucide-react";
 import { motion, useReducedMotion } from "framer-motion";
 import { cn } from "./cn";
 
-export function Panel({ title, icon, actions, className, bodyClassName, children }: { title: ReactNode; icon?: ReactNode; actions?: ReactNode; className?: string; bodyClassName?: string; children: ReactNode }) {
+export function Panel({ id, title, icon, actions, className, bodyClassName, children }: { id?: string; title: ReactNode; icon?: ReactNode; actions?: ReactNode; className?: string; bodyClassName?: string; children: ReactNode }) {
   return (
-    <section className={cn("flex min-h-0 flex-col rounded-2xl border border-white/10 bg-white/[0.04] shadow-[0_18px_50px_-24px_rgb(0_0_0/0.6)] backdrop-blur-xl", className)}>
+    <section id={id} className={cn("flex min-h-0 flex-col rounded-2xl border border-white/10 bg-white/[0.04] shadow-[0_18px_50px_-24px_rgb(0_0_0/0.6)] backdrop-blur-xl", className)}>
       <header className="flex items-center gap-2.5 border-b border-white/10 px-4 py-3">
         {icon && <span className="text-muted [&>svg]:size-4">{icon}</span>}
         <h2 className="font-serif text-[15px] leading-none tracking-tight text-cream">{title}</h2>
@@ -66,7 +66,7 @@ export function Button({ variant = "outline", loading, className, children, disa
       {...rest}
       disabled={disabled || loading}
       className={cn(
-        "inline-flex h-7 items-center justify-center gap-1.5 rounded-full px-3 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 [&>svg]:size-3.5",
+        "guide-focus inline-flex h-7 items-center justify-center gap-1.5 rounded-full px-3 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 [&>svg]:size-3.5",
         variant === "primary" && "bg-fg text-[#160923] hover:bg-cream",
         variant === "danger" && "bg-danger text-[#160923] hover:bg-danger/90",
         variant === "ghost" && "text-muted hover:bg-white/[0.06] hover:text-fg",

@@ -20,10 +20,11 @@ export function ScriptRail({ data, onRun, pending }: { data: Snapshot; onRun: (s
         return (
           <button
             key={s.id}
+            id={`script-${s.id}`}
             onClick={() => onRun(s)}
             disabled={pending !== null}
             title={s.text}
-            className={cn("group flex min-h-[92px] min-w-[220px] items-start gap-3 rounded-2xl border bg-white/[0.03] p-3.5 text-left backdrop-blur-sm transition-colors disabled:cursor-not-allowed disabled:opacity-60", TONE[s.tone], done && "border-ok/30 bg-ok/[0.04]")}
+            className={cn("guide-focus group flex min-h-[92px] min-w-[220px] items-start gap-3 rounded-2xl border bg-white/[0.03] p-3.5 text-left backdrop-blur-sm transition-colors disabled:cursor-not-allowed disabled:opacity-60", TONE[s.tone], done && "border-ok/30 bg-ok/[0.04]")}
           >
             <span className={cn("grid size-8 shrink-0 place-items-center rounded-full border text-xs font-semibold", done ? "border-ok/30 bg-ok/10 text-ok" : s.tone === "attack" ? "border-danger/25 bg-danger/5 text-danger" : s.tone === "benign" ? "border-ok/25 bg-ok/5 text-ok" : "border-info/25 bg-info/5 text-info")}>
               {done ? <Check className="size-4" /> : running ? <Play className="size-3 animate-pulse" /> : <Circle className="size-3" />}

@@ -119,7 +119,7 @@ export function NodeDrawer({ data, id, onClose, onRollback, busy }: { data: Snap
               />
               {source && siblings > 1 ? (
                 <>
-                  <Button variant="danger" className="w-full" loading={busy} onClick={() => onRollback(source._id, reason)}>
+                  <Button id="guide-rollback" variant="danger" className="w-full" loading={busy} onClick={() => onRollback(source._id, reason)}>
                     <Undo2 /> Roll back source message ({siblings} memories)
                   </Button>
                   <Button variant="ghost" className="w-full" disabled={busy} onClick={() => onRollback(node._id, reason)}>
@@ -131,7 +131,7 @@ export function NodeDrawer({ data, id, onClose, onRollback, busy }: { data: Snap
                 </>
               ) : (
                 <>
-                  <Button variant="danger" className="w-full" loading={busy} onClick={() => onRollback(node._id, reason)}>
+                  <Button id="guide-rollback" variant="danger" className="w-full" loading={busy} onClick={() => onRollback(node._id, reason)}>
                     <Undo2 /> Roll back from here
                   </Button>
                   <p className="text-[11px] leading-snug text-muted">Quarantines everything downstream, compensates side effects newest-first, and replays affected requests without this {node.kind}.</p>

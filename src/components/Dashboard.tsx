@@ -3,12 +3,13 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
-import { Activity, AlertTriangle, ArrowDown, ArrowUpRight, Database, Loader2, Network, RotateCcw, ShieldCheck, Sparkles, Undo2 } from "lucide-react";
+import { Activity, AlertTriangle, ArrowDown, ArrowUpRight, Compass, Database, Loader2, Network, RotateCcw, ShieldCheck, Sparkles, Undo2 } from "lucide-react";
 import type { IncidentDoc } from "@/lib/rollback";
 import type { AgentId } from "@/lib/types";
 import { ChatPane } from "./ChatPane";
 import { cn } from "./cn";
 import { Guardrails } from "./Guardrails";
+import { GuidedDemo } from "./GuidedDemo";
 import { IncidentPanel } from "./IncidentPanel";
 import { LineageGraph } from "./LineageGraph";
 import { NodeDrawer } from "./NodeDrawer";
@@ -20,11 +21,33 @@ import { useSnapshot } from "./useSnapshot";
 
 const TABS = ["Ledger", "Memories", "Write log", "Raindrop", "Atlas ops"] as const;
 
+/** "ask" = first visit: offer the guided demo before anything else. */
+type GuideState = { mode: "ask" | "off" | "open" | "paused"; step: number };
+const GUIDE_KEY = "ctrlz.guide";
+
+/** The guide's position is a per-viewer convenience: restore it after a reload, but never depend on it. */
+function loadGuide(): GuideState {
+  try {
+    const g = JSON.parse(window.localStorage.getItem(GUIDE_KEY) ?? "null") as GuideState | null;
+    if (g && ["off", "open", "paused"].includes(g.mode) && Number.isInteger(g.step)) return g;
+  } catch {}
+  return { mode: "ask", step: 0 };
+}
+
 export function Dashboard() {
   const { data, error, pending, call, toast, toasts } = useSnapshot();
   const [selected, setSelected] = useState<string | null>(null);
   const [tab, setTab] = useState<(typeof TABS)[number]>("Ledger");
   const [confirmReset, setConfirmReset] = useState(false);
+  const [guide, setGuideState] = useState<GuideState>(() => (typeof window === "undefined" ? { mode: "off", step: 0 } : loadGuide()));
+  const setGuide = (g: Partial<GuideState>) =>
+    setGuideState((cur) => {
+      const next = { ...cur, ...g };
+      try {
+        window.localStorage.setItem(GUIDE_KEY, JSON.stringify(next));
+      } catch {}
+      return next;
+    });
 
   const tainted = useMemo(() => new Set(((data?.incidents[0] as unknown as IncidentDoc | undefined)?.taint ?? []).map((t) => t._id)), [data]);
 
@@ -50,6 +73,15 @@ export function Dashboard() {
   const rollback = async (rootId: string, reason = "reported as poisoned") => {
     const r = await call<IncidentDoc>("incident", "/api/incident", { rootId, reason });
     if (r) toast("ok", `${r._id}: ${r.compensations.length} compensated · ${r.kept.length} kept · ${r.replayed.length} replayed`);
+  };
+  const resetWorld = async () => {
+    const ok = (await call("reset", "/api/reset")) !== null;
+    if (ok) setSelected(null);
+    return ok;
+  };
+  const evolve = async (incidentId: string) => {
+    const r = await call<{ shipped: { version: number } | null }>("evolve", "/api/evolve", { incidentId });
+    if (r) toast("ok", r.shipped ? `Guardrail v${r.shipped.version} shipped` : "No variant passed the gate");
   };
   const rate = (eventId: string, rating: "up" | "down") => call<FeedbackResult>(`feedback:${eventId}`, "/api/feedback", { eventId, rating });
   const empty = data.guardrails.length === 0;
@@ -95,7 +127,7 @@ export function Dashboard() {
           {confirmReset ? (
             <>
               <span className="text-xs text-muted">Wipe and reseed?</span>
-              <Button variant="danger" loading={pending === "reset"} onClick={async () => { await call("reset", "/api/reset"); setConfirmReset(false); setSelected(null); }}>
+              <Button variant="danger" loading={pending === "reset"} onClick={async () => { await resetWorld(); setConfirmReset(false); }}>
                 Confirm
               </Button>
               <Button variant="ghost" onClick={() => setConfirmReset(false)}>
@@ -107,6 +139,9 @@ export function Dashboard() {
               <RotateCcw /> Reset world
             </Button>
           )}
+          <Button id="guide-start" variant="primary" onClick={() => setGuide({ mode: "open" })} aria-pressed={guide.mode === "open"}>
+            <Compass /> {guide.mode === "paused" ? "Resume guided demo" : guide.mode === "open" ? "Guided demo on" : "Start guided demo"}
+          </Button>
         </div>
       </header>
 
@@ -152,7 +187,7 @@ export function Dashboard() {
       {empty ? (
         <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-8 text-center backdrop-blur-xl">
           <p className="mb-3 text-sm text-muted">The world hasn’t been seeded yet.</p>
-          <Button variant="primary" loading={pending === "reset"} onClick={() => call("reset", "/api/reset")}>
+          <Button variant="primary" loading={pending === "reset"} onClick={() => void resetWorld()}>
             Seed demo world
           </Button>
         </div>
@@ -190,6 +225,7 @@ export function Dashboard() {
                     </span>
                   }
                   className="relative h-[520px]"
+                  id="guide-lineage"
                 >
                   {data.lineage.length ? (
                     <LineageGraph lineage={data.lineage} tainted={tainted} selected={selected} onSelect={setSelected} />
@@ -208,13 +244,14 @@ export function Dashboard() {
                   title={
                     <div className="flex gap-1">
                       {TABS.map((t) => (
-                        <button key={t} onClick={() => setTab(t)} className={cn("rounded-full px-2.5 py-1 text-[11px] transition-colors", tab === t ? "bg-white/[0.08] text-fg" : "font-normal text-muted hover:text-fg")}>
+                        <button key={t} onClick={() => setTab(t)} aria-pressed={tab === t} className={cn("guide-focus rounded-full px-2.5 py-1 text-[11px] transition-colors", tab === t ? "bg-white/[0.08] text-fg" : "font-normal text-muted hover:text-fg")}>
                           {t}
                         </button>
                       ))}
                     </div>
                   }
                   icon={<Activity />}
+                  id="guide-evidence"
                   className="h-[360px]"
                   bodyClassName="scroll-thin overflow-auto"
                 >
@@ -227,10 +264,9 @@ export function Dashboard() {
               </div>
 
               <div className="flex flex-col gap-4">
-                <IncidentPanel data={data} pending={pending} onEvolve={async (incidentId) => {
-                  const r = await call<{ shipped: { version: number } | null }>("evolve", "/api/evolve", { incidentId });
-                  if (r) toast("ok", r.shipped ? `Guardrail v${r.shipped.version} shipped` : "No variant passed the gate");
-                }} />
+                <div id="guide-incident" className="flex min-h-0 flex-col rounded-2xl">
+                  <IncidentPanel data={data} pending={pending} onEvolve={(incidentId) => void evolve(incidentId)} />
+                </div>
                 <Guardrails data={data} pending={pending} onRevert={() => void call("revert", "/api/guardrail/revert")} />
               </div>
             </div>
@@ -238,7 +274,53 @@ export function Dashboard() {
         </>
       )}
 
-      <div className="pointer-events-none fixed bottom-4 right-4 z-50 flex w-[min(380px,calc(100vw-32px))] flex-col gap-2">
+      {guide.mode === "ask" && (
+        <section aria-labelledby="guide-offer" className="fixed bottom-4 left-4 z-40 w-[min(360px,calc(100vw-32px))] rounded-2xl border border-accent/40 bg-[#1c0e30]/95 p-4 shadow-[0_18px_60px_-20px_rgb(0_0_0/0.8)] backdrop-blur-xl">
+          <div className="flex items-center gap-2">
+            <Compass className="size-4 text-accent" />
+            <h2 id="guide-offer" className="font-serif text-lg leading-tight text-cream">Do you need a guided demo?</h2>
+          </div>
+          <p className="mt-2 text-xs leading-5 text-muted">A short walkthrough: Mallory poisons Alice’s travel memory, the agent acts on it, and you roll it back. About 3 minutes, and you click every step yourself.</p>
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            {/* Offered on first visit only, so taking focus here points keyboard users at the choice. */}
+            <Button variant="primary" autoFocus onClick={() => setGuide({ mode: "open", step: 0 })}>
+              <Compass /> Yes, guide me
+            </Button>
+            <Button variant="ghost" onClick={() => setGuide({ mode: "off" })}>
+              No thanks, I’ll explore
+            </Button>
+          </div>
+          <p className="mt-2 text-[10px] text-faint">You can start it any time from the header.</p>
+        </section>
+      )}
+
+      {(guide.mode === "open" || guide.mode === "paused") && (
+        <>
+          {/* Room to scroll the page's bottom edge out from under the docked guide. */}
+          {guide.mode === "open" && <div aria-hidden className="h-[52vh] sm:h-40" />}
+          <GuidedDemo
+            data={data}
+            pending={pending}
+            step={guide.step}
+            paused={guide.mode === "paused"}
+            onStep={(step) => setGuide({ step })}
+            onPause={(p) => setGuide({ mode: p ? "paused" : "open" })}
+            onExit={() => {
+              setGuide({ mode: "off" });
+              // The guide unmounts; hand keyboard focus back to its entry point.
+              requestAnimationFrame(() => document.getElementById("guide-start")?.focus());
+            }}
+            onRun={(s) => void send(s.agentId, s.speaker, s.text, `script:${s.id}`)}
+            onReset={resetWorld}
+            onEvolve={(incidentId) => void evolve(incidentId)}
+            onSelect={setSelected}
+            onShowTab={setTab}
+          />
+        </>
+      )}
+
+      {/* On phones the open guide is a bottom sheet, so toasts move to the top. */}
+      <div className={cn("pointer-events-none fixed right-4 z-50 flex w-[min(380px,calc(100vw-32px))] flex-col gap-2", guide.mode === "open" ? "top-4 sm:top-auto sm:bottom-4" : "bottom-4")}>
         <AnimatePresence>
           {toasts.map((t) => (
             <motion.div
