@@ -2,6 +2,26 @@
 
 **Live demo:** https://ctrlz-mu.vercel.app · **Console:** https://ctrlz-mu.vercel.app/console
 
+## Benchmark: MPBench memory poisoning
+
+![Scatter chart of attack detection TPR versus false positive rate: published MPBench defenses alongside two ctrlz write-guardrail proxies. Cross-study comparison, not a native MPBench score for ctrlz.](docs/mpbench-guardrail-comparison.svg)
+
+| Detector | Attack TPR ↑ | Benign FPR ↓ |
+| --- | ---: | ---: |
+| PromptArmor (MPBench paper) | 67.67% | 1.00% |
+| CommandSans adapted (MPBench paper) | 61.00% | 8.67% |
+| PIGuard (MPBench paper) | 38.33% | 0.33% |
+| DataFilter (MPBench paper) | 23.00% | 53.33% |
+| **ctrlz heuristic minimal** | **15.53%** | **1.47%** |
+| **ctrlz baseline v1** | **1.70%** | **0.17%** |
+
+ctrlz was scored on 3,239 scorable MPBench attacks and 2,999 benign records via
+an `expected_memory` category mapping; published rows are from
+[arXiv:2606.04329](https://arxiv.org/abs/2606.04329), Table 3. This is a
+cross-study reference point: ctrlz's guardrail keeps false positives low but
+catches far fewer attacks than dedicated injection detectors. Full table,
+method, and limitations: [docs/MPBENCH.md](docs/MPBENCH.md).
+
 
 Two agents — a travel **concierge** and a **finance** agent — share a long-term
 memory in MongoDB Atlas. A poisoned memory gets in (Mallory, posing as the
