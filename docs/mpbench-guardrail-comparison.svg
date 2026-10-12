@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="730" viewBox="0 0 1100 730" role="img" aria-labelledby="title desc">
+  <title id="title">MPBench detector comparison: true positive rate versus false positive rate</title>
+  <desc id="desc">Published prompt-injection defenses evaluated against memory poisoning in MPBench, alongside ctrlz's adapted category-mapped guardrail proxy. Results are cross-study and not directly comparable.</desc>
+  <rect width="1100" height="730" fill="#fbfcfe"/>
+  <text x="82" y="48" font-family="Arial, sans-serif" font-size="25" font-weight="700" fill="#172033">Memory-poisoning detection: TPR vs FPR</text>
+  <text x="82" y="77" font-family="Arial, sans-serif" font-size="13" fill="#526078">Published MPBench detector results alongside ctrlz’s category-mapped write-guardrail proxy</text>
+  <text x="82" y="98" font-family="Arial, sans-serif" font-size="12" font-weight="700" fill="#a33c24">Cross-study comparison; ctrlz proxy is not a native MPBench detector score.</text>
+
+  <!-- plot area: x=0..60 FPR, y=0..80 TPR -->
+  <g stroke="#e2e7ef" stroke-width="1">
+    <line x1="100" y1="590" x2="940" y2="590"/><line x1="100" y1="465" x2="940" y2="465"/>
+    <line x1="100" y1="340" x2="940" y2="340"/><line x1="100" y1="215" x2="940" y2="215"/>
+    <line x1="100" y1="90" x2="940" y2="90"/>
+    <line x1="100" y1="90" x2="100" y2="590"/><line x1="240" y1="90" x2="240" y2="590"/>
+    <line x1="380" y1="90" x2="380" y2="590"/><line x1="520" y1="90" x2="520" y2="590"/>
+    <line x1="660" y1="90" x2="660" y2="590"/><line x1="800" y1="90" x2="800" y2="590"/>
+    <line x1="940" y1="90" x2="940" y2="590"/>
+  </g>
+  <g stroke="#69768c" stroke-width="1.5"><line x1="100" y1="90" x2="100" y2="590"/><line x1="100" y1="590" x2="940" y2="590"/></g>
+  <g font-family="Arial, sans-serif" font-size="12" fill="#526078" text-anchor="end">
+    <text x="88" y="594">0</text><text x="88" y="469">20</text><text x="88" y="344">40</text><text x="88" y="219">60</text><text x="88" y="94">80</text>
+  </g>
+  <g font-family="Arial, sans-serif" font-size="12" fill="#526078" text-anchor="middle">
+    <text x="100" y="612">0</text><text x="240" y="612">10</text><text x="380" y="612">20</text><text x="520" y="612">30</text><text x="660" y="612">40</text><text x="800" y="612">50</text><text x="940" y="612">60</text>
+  </g>
+  <text x="520" y="645" font-family="Arial, sans-serif" font-size="14" font-weight="600" fill="#344054" text-anchor="middle">False positive rate (%; lower is better)</text>
+  <text x="28" y="340" font-family="Arial, sans-serif" font-size="14" font-weight="600" fill="#344054" text-anchor="middle" transform="rotate(-90 28 340)">Attack detection TPR (%; higher is better)</text>
+
+  <!-- Published results: blue -->
+  <g fill="#3974b8" stroke="#ffffff" stroke-width="2">
+    <circle cx="104.62" cy="350.44" r="7"/><circle cx="846.62" cy="446.25" r="7"/>
+    <circle cx="730" cy="263.00" r="7"/><circle cx="114" cy="166.94" r="7"/>
+    <circle cx="174.62" cy="292.06" r="7"/><circle cx="221.20" cy="208.75" r="7"/><circle cx="137.38" cy="205.00" r="7"/>
+  </g>
+  <!-- ctrlz proxy results: orange -->
+  <g fill="#e46d32" stroke="#ffffff" stroke-width="2">
+    <circle cx="102.38" cy="579.38" r="8"/><circle cx="120.58" cy="493.00" r="8"/>
+  </g>
+
+  <g font-family="Arial, sans-serif" font-size="11" fill="#25324a">
+    <text x="115" y="347">PIGuard 38.33 / 0.33</text>
+    <text x="688" y="466">DataFilter 23.00 / 53.33</text>
+    <text x="683" y="250">CommandSans 52.33 / 45.00</text>
+    <text x="123" y="151">PromptArmor 67.67 / 1.00</text>
+    <text x="183" y="286">PIGuard adapted 47.67 / 5.33</text>
+    <text x="229" y="202">CommandSans adapted 61.00 / 8.67</text>
+    <text x="145" y="221">PromptArmor adapted 61.60 / 2.67</text>
+    <text x="119" y="575">ctrlz v1 proxy 1.70 / 0.17</text>
+    <text x="137" y="487" font-weight="700" fill="#a94b1b">ctrlz heuristic minimal proxy 15.53 / 1.47</text>
+  </g>
+
+  <g font-family="Arial, sans-serif" font-size="11" fill="#526078">
+    <circle cx="104" cy="675" r="6" fill="#3974b8"/><text x="116" y="679">Published defenses (MPBench paper)</text>
+    <circle cx="344" cy="675" r="6" fill="#e46d32"/><text x="356" y="679">ctrlz proxy (expected_memory category mapping)</text>
+    <text x="940" y="679" text-anchor="end">Point labels: TPR / FPR, %</text>
+  </g>
+  <text x="82" y="706" font-family="Arial, sans-serif" font-size="10" fill="#6c778b">Published defense values: arXiv:2606.04329, Table 3. ctrlz values: 3,239 scorable attacks and 2,999 benign records; provenance/category mapping differs.</text>
+</svg>

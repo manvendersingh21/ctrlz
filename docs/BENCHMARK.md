@@ -38,3 +38,6 @@ pnpm exec vitest run tests/unit/guardrails.test.ts
 The live evolution route may use an LLM proposal and revoked-memory embeddings;
 its per-run result can differ. Judges should read the denominators and gate
 verdict shown for the actual run in the console.
+
+For a larger, external reference point, see the
+[MPBench memory-poisoning comparison](MPBENCH.md).
