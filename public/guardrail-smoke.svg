@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="560" viewBox="0 0 960 560" role="img" aria-labelledby="title desc">
+  <title id="title">CtrlZ built-in guardrail smoke evaluation</title>
+  <desc id="desc">Baseline, minimal, and strict rule sets scored on checked-in development and held-out smoke fixtures. Minimal blocks all five attacks and keeps all six benign writes. Strict blocks all attacks but keeps three of six benign writes. This compares guardrail configurations, not applications.</desc>
+  <rect width="960" height="560" rx="24" fill="#111018"/>
+  <text x="52" y="58" fill="#f8f4fb" font-family="Inter,Arial,sans-serif" font-size="25" font-weight="700">Guardrail smoke evaluation</text>
+  <text x="52" y="88" fill="#b9b1c2" font-family="Inter,Arial,sans-serif" font-size="14">Checked-in fixtures · 5 attack cases + 6 benign cases per split · deterministic rules</text>
+  <rect x="52" y="116" width="856" height="52" rx="10" fill="#261e2c"/>
+  <text x="72" y="148" fill="#e6d9ef" font-family="Inter,Arial,sans-serif" font-size="14" font-weight="600">This compares CtrlZ guardrail configurations, not CtrlZ with other applications.</text>
+
+  <text x="52" y="211" fill="#c7bdce" font-family="Inter,Arial,sans-serif" font-size="12" font-weight="700" letter-spacing="1">RULE SET</text>
+  <text x="320" y="211" fill="#c7bdce" font-family="Inter,Arial,sans-serif" font-size="12" font-weight="700" letter-spacing="1">ATTACKS BLOCKED</text>
+  <text x="642" y="211" fill="#c7bdce" font-family="Inter,Arial,sans-serif" font-size="12" font-weight="700" letter-spacing="1">BENIGN WRITES KEPT</text>
+  <text x="320" y="232" fill="#8f8797" font-family="Inter,Arial,sans-serif" font-size="11">0</text>
+  <text x="550" y="232" fill="#8f8797" font-family="Inter,Arial,sans-serif" font-size="11">5 / 5</text>
+  <text x="642" y="232" fill="#8f8797" font-family="Inter,Arial,sans-serif" font-size="11">0</text>
+  <text x="872" y="232" fill="#8f8797" font-family="Inter,Arial,sans-serif" font-size="11">6 / 6</text>
+
+  <g font-family="Inter,Arial,sans-serif">
+    <text x="52" y="279" fill="#f8f4fb" font-size="16" font-weight="600">Baseline v1</text>
+    <text x="52" y="300" fill="#a69cad" font-size="12">Raw-secret rule only</text>
+    <rect x="320" y="260" width="230" height="18" rx="9" fill="#302a36"/>
+    <rect x="320" y="260" width="0" height="18" rx="9" fill="#f079a7"/>
+    <text x="564" y="275" fill="#f079a7" font-size="13" font-weight="700">0 / 5</text>
+    <rect x="642" y="260" width="230" height="18" rx="9" fill="#302a36"/>
+    <rect x="642" y="260" width="230" height="18" rx="9" fill="#84d9a0"/>
+    <text x="884" y="275" fill="#84d9a0" font-size="13" font-weight="700">6 / 6</text>
+
+    <text x="52" y="367" fill="#f8f4fb" font-size="16" font-weight="600">Evolved · minimal</text>
+    <text x="52" y="388" fill="#a69cad" font-size="12">Heuristic proposal + baseline</text>
+    <rect x="320" y="348" width="230" height="18" rx="9" fill="#302a36"/>
+    <rect x="320" y="348" width="230" height="18" rx="9" fill="#84d9a0"/>
+    <text x="564" y="363" fill="#84d9a0" font-size="13" font-weight="700">5 / 5</text>
+    <rect x="642" y="348" width="230" height="18" rx="9" fill="#302a36"/>
+    <rect x="642" y="348" width="230" height="18" rx="9" fill="#84d9a0"/>
+    <text x="884" y="363" fill="#84d9a0" font-size="13" font-weight="700">6 / 6</text>
+
+    <text x="52" y="455" fill="#f8f4fb" font-size="16" font-weight="600">Evolved · strict</text>
+    <text x="52" y="476" fill="#a69cad" font-size="12">Blocks all payment/contact routing</text>
+    <rect x="320" y="436" width="230" height="18" rx="9" fill="#302a36"/>
+    <rect x="320" y="436" width="230" height="18" rx="9" fill="#84d9a0"/>
+    <text x="564" y="451" fill="#84d9a0" font-size="13" font-weight="700">5 / 5</text>
+    <rect x="642" y="436" width="230" height="18" rx="9" fill="#302a36"/>
+    <rect x="642" y="436" width="115" height="18" rx="9" fill="#f3bd70"/>
+    <text x="884" y="451" fill="#f3bd70" font-size="13" font-weight="700">3 / 6</text>
+  </g>
+  <text x="52" y="525" fill="#958d9d" font-family="Inter,Arial,sans-serif" font-size="12">Source: src/lib/scenario.ts + tests/unit/guardrails.test.ts · local deterministic scoreSplit; no provider calls</text>
+</svg>

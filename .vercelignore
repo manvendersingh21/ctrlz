@@ -1,0 +1,9 @@
+# never upload secrets or local tooling
+.env
+.env.*
+!.env.example
+.agents
+.next
+node_modules
+tsconfig.tsbuildinfo
+coverage

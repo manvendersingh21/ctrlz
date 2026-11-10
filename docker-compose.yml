@@ -1,0 +1,35 @@
+# ctrlz — Atlas Local (search indexes, transactions, TTL, …) + the app.
+# Atlas is NOT published to the host (port 27017 is often taken locally);
+# it is reachable only on the compose network as `atlas:27017`.
+
+services:
+  atlas:
+    image: mongodb/mongodb-atlas-local:latest
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+      start_period: 15s
+    volumes:
+      - atlas-data:/data/db
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      atlas:
+        condition: service_healthy
+    environment:
+      MONGODB_URI: mongodb://atlas:27017/?directConnection=true
+      CTRLZ_RATE_LIMIT_PER_MIN: ${CTRLZ_RATE_LIMIT_PER_MIN:-60}
+    # optional: a local .env adds API keys / hardening flags on top of the above
+    env_file:
+      - path: .env
+        required: false
+    ports:
+      - "3000:3000"
+
+volumes:
+  atlas-data:
